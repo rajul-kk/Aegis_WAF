@@ -24,10 +24,15 @@ from .schemas import (
     Explanation,
     RequestMetadata,
     AegisResponse,
+    VoteRecord,
 )
 from .intent_analyst import IntentAnalyst
 from .policy_auditor import PolicyAuditor
-from .security_council import SecurityCouncil, evaluate_prompt
+from .adversarial_tester import AdversarialTester
+from .context_analyzer import ContextAnalyzer
+from .data_guardian import DataGuardian
+from .security_council import SecurityCouncil
+from .preprocessor import preprocess_prompt
 
 __all__ = [
     "AgentMessage",
@@ -43,8 +48,13 @@ __all__ = [
     "Explanation",
     "RequestMetadata",
     "AegisResponse",
+    "VoteRecord",
     "IntentAnalyst",
     "PolicyAuditor",
+    "AdversarialTester",
+    "ContextAnalyzer",
+    "DataGuardian",
     "SecurityCouncil",
+    "preprocess_prompt",
     "evaluate_prompt",
 ]

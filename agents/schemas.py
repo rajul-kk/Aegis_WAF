@@ -50,6 +50,8 @@ class DebateResult(BaseModel):
     transcript: DebateTranscript
     intent_analysis: Optional[AgentAnalysis] = None
     policy_analysis: Optional[AgentAnalysis] = None
+    vote_record: Optional["VoteRecord"] = None
+    mode: Literal["light", "full"] = Field(default="light")
     consensus_reached: bool = Field(default=False)
     turns_used: int = Field(default=0)
 
@@ -128,3 +130,21 @@ class AegisResponse(BaseModel):
     output_validation: OutputValidationResult = Field(default_factory=OutputValidationResult)
     explanation: Explanation = Field(default_factory=Explanation)
     metadata: RequestMetadata = Field(default_factory=RequestMetadata)
+class VoteRecord(BaseModel):
+    agent_analyses: list[AgentAnalysis] = Field(default_factory=list)
+    vote_breakdown: dict[str, int] = Field(default_factory=dict)
+    
+    def add_vote(self, analysis: AgentAnalysis) -> None:
+        self.agent_analyses.append(analysis)
+        self.vote_breakdown[analysis.assessment] = self.vote_breakdown.get(analysis.assessment, 0) + 1
+    
+    def get_majority(self) -> Optional[str]:
+        if not self.vote_breakdown:
+            return None
+        return max(self.vote_breakdown, key=self.vote_breakdown.get)
+    
+    def get_consensus_count(self) -> int:
+        if not self.vote_breakdown:
+            return 0
+        return max(self.vote_breakdown.values())
+
