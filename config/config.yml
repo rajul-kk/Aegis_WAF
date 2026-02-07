@@ -2,26 +2,101 @@
 # Aegis WAF - NeMo Guardrails Configuration
 colang_version: "2.x"
 
+
 models:
-  - type: camel_agent
-    engine: nim
-    model: meta/llama-3.3-70b-instruct
+  # Primary LLM for general interactions (Gemini 2 Flash)
+  - type: main
+    engine: google_ai_studio
+    model: gemini-2-flash
     parameters:
-      base_url: https://integrate.api.nvidia.com/v1
-      api_key: ${NVIDIA_API_KEY}
-      temperature: 0.3
+      base_url: ${GOOGLE_AI_STUDIO_API_KEY:+https://generativelanguage.googleapis.com/v1beta}
+      api_key: ${GOOGLE_API_KEY}
+      temperature: 0.2
       max_tokens: 1024
 
-  # Security Judge: Llama Guard 3 via NVIDIA NIM
+  # Llama Guard 3 for content moderation (Layer 2)
   - type: llama_guard
     engine: nim
     model: meta/llama-guard-3-8b
     parameters:
-      base_url: https://integrate.api.nvidia.com/v1
-      api_key: ${NVIDIA_API_KEY}
+      base_url: ${NVIDIA_NIM_API_KEY:+https://integrate.api.nvidia.com/v1}
+      api_key: ${NVIDIA_NIM_API_KEY}
+
+  # Llama 3.3 70B for CAMEL security agents (Layer 3)
+  - type: camel_agent
+    engine: nim
+    model: meta/llama-3.3-70b-instruct
+    parameters:
+      base_url: ${NVIDIA_NIM_API_KEY:+https://integrate.api.nvidia.com/v1}
+      api_key: ${NVIDIA_NIM_API_KEY}
+      temperature: 0.1  # Low temperature for security decisions
+      max_tokens: 512
+
+
+security:
+  # Layer 1: Fast Scanner Settings
+  fast_scanner:
+    enabled: true
+    max_latency_ms: 10
+    patterns_file: "patterns/attack_patterns.yml"
+
+  # Layer 2: Intent Classifier (Llama Guard)
+  intent_classifier:
+    enabled: true
+    model: llama_guard
+
+  # Layer 3: CAMEL Verification Thresholds
+  camel:
+    # Risk score routing thresholds
+    fast_track_threshold: 0.30    # Below this -> fast-track allow
+    light_camel_threshold: 0.70   # Between 0.30-0.70 -> Light CAMEL
+    # Above 0.70 -> Full CAMEL
+
+    # CAMEL agent model
+    agent_model: camel_agent  # Uses Llama 3.3 70B
+
+    # Light CAMEL config
+    light:
+      agents: 2
+      rounds: 1
+      timeout_ms: 500
+
+    # Full CAMEL config
+    full:
+      agents: 5
+      rounds: 3
+      timeout_ms: 2000
+      consensus_threshold: 0.6  # 60% agreement required
+
+  # Layer 3.5: Output Validator
+  output_validator:
+    enabled: true
+    tool_whitelist:
+      - search
+      - calculator
+      - file_read
+    pii_scrubbing: true
+    secret_detection: true
+
+  # Layer 6: Session Monitor
+  session_monitor:
+    enabled: true
+    async: true
+    cumulative_risk_threshold: 2.5
+    escalation_detection: true
+    session_timeout_minutes: 30
+
 
 rails:
-  config:
-    # Enables the built-in Llama Guard 3 checks in NeMo
-    llama_guard_3:
-      enabled: true
+  input:
+    flows:
+      - aegis tiered routing
+
+  output:
+    flows:
+      - aegis output validation
+
+slo:
+  fast_track_ms: 80
+  light_camel_ms: 500
+  full_camel_ms: 2000

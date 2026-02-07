@@ -25,7 +25,7 @@ class DataGuardian:
             "NVIDIA_BASE_URL", 
             "https://integrate.api.nvidia.com/v1"
         )
-        self.model = model or "meta/llama-3.1-8b-instruct"
+        self.model = model or "meta/llama-3.3-70b-instruct"
         
         self.client = OpenAI(
             api_key=self.api_key,

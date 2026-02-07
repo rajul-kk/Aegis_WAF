@@ -1,6 +1,7 @@
 """
 Security Council - Variable-agent orchestration based on risk level.
 Supports light mode (2 agents) and full mode (5 agents).
+Returns unified AegisResponse format for consistency with production API.
 """
 import os
 import time
@@ -8,7 +9,20 @@ from typing import Optional, Literal
 
 from dotenv import load_dotenv
 
-from .schemas import AgentAnalysis, DebateResult, DebateTranscript, VoteRecord
+from .schemas import (
+    AgentAnalysis, 
+    DebateResult, 
+    DebateTranscript, 
+    VoteRecord,
+    AegisResponse,
+    LatencyBreakdown,
+    ScanResult,
+    CouncilResult,
+    AgentVote,
+    OutputValidationResult,
+    Explanation,
+    RequestMetadata,
+)
 from .intent_analyst import IntentAnalyst
 from .policy_auditor import PolicyAuditor
 from .adversarial_tester import AdversarialTester
@@ -44,7 +58,7 @@ class SecurityCouncil:
             self.context_analyzer = ContextAnalyzer(api_key=api_key, base_url=base_url)
             self.data_guardian = DataGuardian(api_key=api_key, base_url=base_url)
     
-    def evaluate(self, prompt: str) -> DebateResult:
+    def evaluate(self, prompt: str) -> AegisResponse:
         preprocessed_prompt, decodings = preprocess_prompt(prompt)
         
         if decodings:
@@ -55,7 +69,7 @@ class SecurityCouncil:
         else:
             return self._evaluate_full(preprocessed_prompt, decodings)
     
-    def _evaluate_light(self, prompt: str, decodings: list[str]) -> DebateResult:
+    def _evaluate_light(self, prompt: str, decodings: list[str]) -> AegisResponse:
         start_time = time.time()
         transcript = DebateTranscript()
         
@@ -81,24 +95,59 @@ class SecurityCouncil:
                    f"Reasoning: {policy_analysis.reasoning}"
         )
         
-        if self._check_consensus(intent_analysis, policy_analysis):
-            return self._build_result(
-                intent_analysis=intent_analysis,
-                policy_analysis=policy_analysis,
-                transcript=transcript,
-                consensus_reached=True,
-                mode="light"
-            )
+        consensus_reached = self._check_consensus(intent_analysis, policy_analysis)
         
-        return self._build_result(
-            intent_analysis=intent_analysis,
-            policy_analysis=policy_analysis,
-            transcript=transcript,
-            consensus_reached=False,
-            mode="light"
+        verdict, confidence, reasoning = self._calculate_verdict(
+            intent_analysis, 
+            policy_analysis, 
+            consensus_reached
+        )
+        
+        camel_latency = int((time.time() - start_time) * 1000)
+        
+        return AegisResponse(
+            decision="BLOCK" if verdict == "BLOCK" else "ALLOW",
+            risk_score=confidence,
+            route="LIGHT_CAMEL",
+            latency_ms=LatencyBreakdown(
+                camel_verification=camel_latency,
+                total=camel_latency
+            ),
+            scan=ScanResult(),
+            council=CouncilResult(
+                agents=["intent_analyst", "policy_auditor"],
+                rounds_completed=transcript.turn_count,
+                consensus_reached=consensus_reached,
+                consensus_score=confidence,
+                votes=[
+                    AgentVote(
+                        agent="intent_analyst",
+                        decision=intent_analysis.assessment,
+                        confidence=intent_analysis.confidence,
+                        reasoning=intent_analysis.reasoning
+                    ),
+                    AgentVote(
+                        agent="policy_auditor",
+                        decision=policy_analysis.assessment,
+                        confidence=policy_analysis.confidence,
+                        reasoning=policy_analysis.reasoning
+                    )
+                ]
+            ),
+            output_validation=OutputValidationResult(),
+            explanation=Explanation(
+                reason_code="CAMEL_BLOCK" if verdict == "BLOCK" else "CAMEL_ALLOW",
+                triggered_layers=[1, 2, 3] if verdict == "BLOCK" else [],
+                evidence=[
+                    intent_analysis.reasoning[:100] + "...",
+                    policy_analysis.reasoning[:100] + "..."
+                ],
+                human_summary=f"{'Blocked' if verdict == 'BLOCK' else 'Allowed'} by security council (2 agents, {transcript.turn_count} rounds)"
+            ),
+            metadata=RequestMetadata()
         )
     
-    def _evaluate_full(self, prompt: str, decodings: list[str]) -> DebateResult:
+    def _evaluate_full(self, prompt: str, decodings: list[str]) -> AegisResponse:
         start_time = time.time()
         transcript = DebateTranscript()
         vote_record = VoteRecord()
@@ -171,17 +220,39 @@ class SecurityCouncil:
         
         avg_confidence = sum(a.confidence for a in vote_record.agent_analyses) / len(vote_record.agent_analyses)
         
-        reasoning = self._build_full_reasoning(vote_record, majority_vote, consensus_reached)
+        camel_latency = int((time.time() - start_time) * 1000)
         
-        return DebateResult(
-            verdict=verdict,
-            confidence=avg_confidence,
-            reasoning=reasoning,
-            transcript=transcript,
-            vote_record=vote_record,
-            consensus_reached=consensus_reached,
-            turns_used=transcript.turn_count,
-            mode="full"
+        return AegisResponse(
+            decision="BLOCK" if verdict == "BLOCK" else "ALLOW",
+            risk_score=avg_confidence,
+            route="FULL_CAMEL",
+            latency_ms=LatencyBreakdown(
+                camel_verification=camel_latency,
+                total=camel_latency
+            ),
+            scan=ScanResult(),
+            council=CouncilResult(
+                agents=[a.agent_name for a in vote_record.agent_analyses],
+                rounds_completed=transcript.turn_count,
+                consensus_reached=consensus_reached,
+                consensus_score=avg_confidence,
+                votes=[
+                    AgentVote(
+                        agent=a.agent_name,
+                        decision=a.assessment,
+                        confidence=a.confidence,
+                        reasoning=a.reasoning
+                    ) for a in vote_record.agent_analyses
+                ]
+            ),
+            output_validation=OutputValidationResult(),
+            explanation=Explanation(
+                reason_code="CAMEL_BLOCK" if verdict == "BLOCK" else "CAMEL_ALLOW",
+                triggered_layers=[1, 2, 3] if verdict == "BLOCK" else [],
+                evidence=[a.reasoning[:100] + "..." for a in vote_record.agent_analyses[:3]],
+                human_summary=f"{'Blocked' if verdict == 'BLOCK' else 'Allowed'} by security council (5 agents, {consensus_count}/{total_agents} consensus)"
+            ),
+            metadata=RequestMetadata()
         )
     
     def _check_consensus(
@@ -199,14 +270,12 @@ class SecurityCouncil:
         
         return True
     
-    def _build_result(
+    def _calculate_verdict(
         self,
         intent_analysis: AgentAnalysis,
         policy_analysis: AgentAnalysis,
-        transcript: DebateTranscript,
-        consensus_reached: bool,
-        mode: Literal["light", "full"]
-    ) -> DebateResult:
+        consensus_reached: bool
+    ) -> tuple[str, float, str]:
         if consensus_reached:
             if intent_analysis.assessment == "SAFE":
                 verdict = "ALLOW"
@@ -243,33 +312,9 @@ class SecurityCouncil:
             
             confidence = min(intent_analysis.confidence, policy_analysis.confidence) * 0.8
         
-        return DebateResult(
-            verdict=verdict,
-            confidence=confidence,
-            reasoning=reasoning,
-            transcript=transcript,
-            intent_analysis=intent_analysis,
-            policy_analysis=policy_analysis,
-            consensus_reached=consensus_reached,
-            turns_used=transcript.turn_count,
-            mode=mode
-        )
-    
-    def _build_full_reasoning(self, vote_record: VoteRecord, majority: str, consensus: bool) -> str:
-        lines = []
-        lines.append(f"5-Agent Council Vote: {vote_record.vote_breakdown}")
-        lines.append(f"Majority Decision: {majority}")
-        lines.append(f"Consensus: {'Yes' if consensus else 'No'} ({vote_record.get_consensus_count()}/5 agents agree)")
-        lines.append("")
-        
-        for analysis in vote_record.agent_analyses:
-            lines.append(f"**{analysis.agent_name.upper()}** [{analysis.assessment}, {analysis.confidence:.2f}]")
-            lines.append(f"{analysis.reasoning[:200]}...")
-            lines.append("")
-        
-        return "\n".join(lines)
+        return verdict, confidence, reasoning
 
 
-def evaluate_prompt(prompt: str, **kwargs) -> DebateResult:
+def evaluate_prompt(prompt: str, **kwargs) -> AegisResponse:
     council = SecurityCouncil(**kwargs)
     return council.evaluate(prompt)
