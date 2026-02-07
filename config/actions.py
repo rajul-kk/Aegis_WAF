@@ -2,22 +2,42 @@
 from __future__ import annotations
 
 import math
-import re2  
+import re2
 from typing import Dict, List, Tuple, Optional
 
 def _rx(pattern: str):
-
     opts = re2.Options()
-    if True:
-        opts.case_sensitive = False
-    flag = True
-    if flag:
-        opts.dot_nl = True
+    opts.case_sensitive = False
+    opts.dot_nl = True
     compiled = re2.compile(pattern, options=opts)
     return compiled
 
+def _rx_sensitive(pattern: str):
+    """Compile a pattern without case-insensitive flag."""
+    opts = re2.Options()
+    opts.dot_nl = True
+    compiled = re2.compile(pattern, options=opts)
+    return compiled
+
+def is_valid_ssn(ssn: str) -> bool:
+    """Validate SSN rules that re2 can't express as lookaheads.
+    Rejects 000, 666, 9xx area codes; 00 group; 0000 serial."""
+    parts = ssn.split("-")
+    if len(parts) != 3:
+        return False
+    area, group, serial = parts
+    if area == "000" or area == "666":
+        return False
+    if area[0] == "9":
+        return False
+    if group == "00":
+        return False
+    if serial == "0000":
+        return False
+    return True
+
 def is_valid_luhn(cc_number: str) -> bool:
-    
+
     digits: List[int] = []
     for ch in cc_number:
         if ch.isdigit():
@@ -49,7 +69,7 @@ def is_valid_luhn(cc_number: str) -> bool:
     return (total % 10 == 0)
 
 def calculate_entropy(text: str) -> float:
-    
+
     if not text:
         return 0.0
 
@@ -86,8 +106,11 @@ def normalize_text(text: str) -> str:
     if not text:
         return ""
 
-    pattern_s = r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\u200B-\u200D\uFEFF]"
+    pattern_s = r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]"
     cleaned = re2.sub(pattern_s, "", text)
+    # Remove zero-width and BOM characters (handle as plain string replacement)
+    for ch in ["\u200B", "\u200C", "\u200D", "\uFEFF"]:
+        cleaned = cleaned.replace(ch, "")
     return cleaned
 
 def default_patterns() -> Dict[str, Dict[str, object]]:
@@ -98,7 +121,7 @@ def default_patterns() -> Dict[str, Dict[str, object]]:
     v1: Dict[str, object] = {}
     v1["category"] = "prompt_injection"
     v1["severity"] = "high"
-    v1["regex"] = _rx(r"(?i)\b(ignore|disregard|bypass)\b.{0,40}\b(previous|prior|system)\b.{0,20}\b(instructions|prompt|message)s?\b")
+    v1["regex"] = _rx(r"\b(ignore|disregard|bypass)\b.{0,40}\b(previous|prior|system)\b.{0,20}\b(instructions|prompt|message)s?\b")
     v1["description"] = "Attempt to override system instructions"
     patterns[k1] = v1
 
@@ -106,23 +129,25 @@ def default_patterns() -> Dict[str, Dict[str, object]]:
     v2: Dict[str, object] = {}
     v2["category"] = "prompt_injection"
     v2["severity"] = "critical"
-    v2["regex"] = _rx(r"(?i)\b(developer mode|god mode|jailbreak|dan mode|unfiltered)\b")
+    v2["regex"] = _rx(r"\b(developer mode|god mode|jailbreak|dan mode|unfiltered)\b")
     v2["description"] = "Known jailbreak keywords"
     patterns[k2] = v2
 
+    # SSN: broad match, then post-validate to reject 000/666/9xx area, 00 group, 0000 serial
     k3 = "pii_ssn_strict"
     v3: Dict[str, object] = {}
     v3["category"] = "pii"
     v3["severity"] = "critical"
-    v3["regex"] = _rx(r"\b(?!000|666|9\d{2})\d{3}-(?!00)\d{2}-(?!0000)\d{4}\b")
+    v3["regex"] = _rx_sensitive(r"\b\d{3}-\d{2}-\d{4}\b")
     v3["description"] = "Strict US SSN pattern"
+    v3["post_validate"] = "ssn"
     patterns[k3] = v3
 
     k4 = "pii_credit_card_candidate"
     v4: Dict[str, object] = {}
     v4["category"] = "pii_candidate"
     v4["severity"] = "high"
-    v4["regex"] = _rx(r"\b(?:\d[ -]*?){13,19}\b")
+    v4["regex"] = _rx_sensitive(r"\b(\d[ -]*?){13,19}\b")
     v4["description"] = "Potential credit card (Requires Luhn Verification)"
     patterns[k4] = v4
 
@@ -130,7 +155,7 @@ def default_patterns() -> Dict[str, Dict[str, object]]:
     v5: Dict[str, object] = {}
     v5["category"] = "tool_abuse"
     v5["severity"] = "critical"
-    v5["regex"] = _rx(r"(?i)\b(drop\s+table|truncate\s+table|alter\s+user|flush\s+privileges)\b")
+    v5["regex"] = _rx(r"\b(drop\s+table|truncate\s+table|alter\s+user|flush\s+privileges)\b")
     v5["description"] = "Destructive SQL admin commands"
     patterns[k5] = v5
 
@@ -138,7 +163,7 @@ def default_patterns() -> Dict[str, Dict[str, object]]:
     v6: Dict[str, object] = {}
     v6["category"] = "tool_abuse"
     v6["severity"] = "high"
-    v6["regex"] = _rx(r"(?i)\b(os\.system|subprocess\.Popen|eval\(|exec\(|/bin/sh)\b")
+    v6["regex"] = _rx(r"\b(os\.system|subprocess\.Popen|eval\(|exec\(|/bin/sh)\b")
     v6["description"] = "Code execution primitives"
     patterns[k6] = v6
 
@@ -173,7 +198,12 @@ def scan_text(
 
         for m in it:
             s = m.group(0)
-            
+
+            # Post-validation for SSN: reject invalid area/group/serial
+            if rule.get("post_validate") == "ssn":
+                if not is_valid_ssn(s):
+                    continue
+
             if rid == "pii_credit_card_candidate":
                 only = re2.sub(r"[^0-9]", "", s)
                 ok = is_valid_luhn(only)
@@ -193,4 +223,14 @@ def scan_text(
     return found
 
 def scan_prompt(prompt: str) -> Dict[str, object]:
-    return {"findings": scan_text(prompt), "source": "prompt"}
+    patterns = default_patterns()
+    findings = scan_text(prompt, patterns=patterns)
+    entropy_flag = any(f["rule_id"] == "anomaly_high_entropy" for f in findings)
+    matched_ids = [f["rule_id"] for f in findings if f["rule_id"] != "anomaly_high_entropy"]
+    return {
+        "findings": findings,
+        "source": "prompt",
+        "patterns_checked": len(patterns),
+        "patterns_matched": matched_ids,
+        "entropy_flag": entropy_flag,
+    }

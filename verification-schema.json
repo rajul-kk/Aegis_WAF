@@ -1,0 +1,51 @@
+{
+  "decision": "ALLOW | BLOCK | SANITIZED",
+  "risk_score": 0.0,
+  "route": "FAST_TRACK | LIGHT_CAMEL | FULL_CAMEL",
+  "latency_ms": {
+    "fast_scan": 0,
+    "intent_classification": 0,
+    "camel_verification": 0,
+    "output_validation": 0,
+    "session_update": 0,
+    "total": 0
+  },
+  "scan": {
+    "patterns_checked": 6,
+    "patterns_matched": [],
+    "entropy_flag": false
+  },
+  "council": {
+    "agents": [],
+    "rounds_completed": 0,
+    "consensus_reached": null,
+    "consensus_score": null,
+    "votes": [
+      {
+        "agent": "string",
+        "decision": "ALLOW | BLOCK",
+        "confidence": 0.0,
+        "reasoning": "string"
+      }
+    ]
+  },
+  "output_validation": {
+    "pii_scrubbed": false,
+    "secrets_detected": false,
+    "tools_blocked": [],
+    "modifications": []
+  },
+  "explanation": {
+    "reason_code": "CLEAN | PATTERN_MATCH | CAMEL_BLOCK | CONSENSUS_BLOCK | OUTPUT_VIOLATION | HIGH_ENTROPY",
+    "triggered_layers": [],
+    "evidence": [],
+    "human_summary": "string",
+    "suggestion": null
+  },
+  "metadata": {
+    "request_id": "string",
+    "session_id": "string",
+    "timestamp": "ISO-8601",
+    "waf_version": "1.0.0"
+  }
+}
