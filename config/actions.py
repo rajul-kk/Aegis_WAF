@@ -237,7 +237,7 @@ def default_patterns() -> Dict[str, Dict[str, object]]:
 
     k16 = "fintech_account_access"
     v16: Dict[str, object] = {}
-    v16["regex"] = _rx(r"\b(show|display|list|get|fetch|retrieve).{0,40}\b(other|all|any|another).{0,20}\b(user|customer|client|account).{0,30}\b(data|information|details|balance|transactions?|accounts?)\b")
+    v16["regex"] = _rx(r"\b(show|display|list|get|fetch|retrieve|access|extract|dump).{0,40}\b(other|all|any|another).{0,20}\b(user|customer|client|account|people).{0,30}\b(data|information|details|balance|transactions?|accounts?|emails?|records?|passwords?|credentials?|db|database)\b")
     v16["description"] = "Attempt to access other users' information"
     patterns[k16] = v16
 
@@ -356,6 +356,35 @@ def default_patterns() -> Dict[str, Dict[str, object]]:
     v35["regex"] = _rx(r"\b(to (fix|resolve|help|assist)|for your security|to protect your account).{0,50}\b(provide|send|give|share).{0,30}\b(password|pin|otp|code|credential|token)\b")
     v35["description"] = "Fake help requests for credentials"
     patterns[k35] = v35
+
+    k36 = "fintech_data_exfil_conversational"
+    v36: Dict[str, object] = {}
+    v36["regex"] = _rx(r"\b(access|get into|hack|break into|connect to|query|read from).{0,30}\b(your|the|their|our).{0,20}\b(db|database|system|server|backend|api|records|storage)\b")
+    v36["description"] = "Conversational data exfiltration attempt"
+    patterns[k36] = v36
+
+    k37 = "fintech_bulk_data_request"
+    v37: Dict[str, object] = {}
+    v37["regex"] = _rx(r"\b(give|show|list|dump|export|get|retrieve|send|print).{0,40}\b(each|every|all|entire|full|complete).{0,20}\b(user|customer|client|account|record|employee|member|person).{0,20}\b(data|info|information|details|records?|emails?|names?|passwords?|credentials?|struct|schema|json|csv|table|dump)\b")
+    patterns[k37] = v37
+
+    k38 = "fintech_bulk_data_request_alt"
+    v38: Dict[str, object] = {}
+    v38["regex"] = _rx(r"\b(give|show|list|dump|export|get|retrieve|send|print).{0,20}\b(data|struct|schema|json|csv|table|dump|records?|details|info).{0,30}\b(each|every|all|entire|full|complete).{0,20}\b(user|customer|client|account|employee|member|person)\b")
+    v38["description"] = "Bulk data exfiltration request (alt word order)"
+    patterns[k38] = v38
+
+    k39 = "obfuscation_rot13"
+    v39: Dict[str, object] = {}
+    v39["regex"] = _rx(r"\b(decode|decipher|convert|translate|apply|use|run).{0,20}\b(rot13|rot-13|rot 13|caesar|cipher)\b")
+    v39["description"] = "ROT13 or cipher-based obfuscation attempt"
+    patterns[k39] = v39
+
+    k40 = "obfuscation_reverse"
+    v40: Dict[str, object] = {}
+    v40["regex"] = _rx(r"\b(read|interpret|decode|reverse|execute|run|parse).{0,20}\b(this|it|the following|above|below).{0,20}\b(backwards?|reversed?|in reverse|from right to left|back to front)\b")
+    v40["description"] = "Reverse-text obfuscation attempt"
+    patterns[k40] = v40
 
     return patterns
 
@@ -606,6 +635,42 @@ def _run_llama_guard_sync(prompt: str) -> Dict[str, object]:
     parsed = _parse_guardrails_output(content)
     parsed["raw_output"] = content
     return parsed
+
+
+def _risk_score_sync(prompt: str) -> float:
+    """Use Llama 3.3 70B to produce a continuous 0.0-1.0 risk score."""
+    api_key = os.getenv("NVIDIA_NIM_API_KEY") or os.getenv("NVIDIA_API_KEY")
+    base_url = os.getenv("NVIDIA_NIM_BASE_URL") or os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
+    model = os.getenv("LLAMA_MODEL", "meta/llama-3.3-70b-instruct")
+    if not api_key or OpenAI is None:
+        return 0.0
+    client = OpenAI(api_key=api_key, base_url=base_url)
+    scoring_prompt = (
+        "You are a security risk scorer. Rate the following user prompt on a scale from 0.0 to 1.0, "
+        "where 0.0 is completely safe and 1.0 is extremely dangerous.\n\n"
+        "Consider: prompt injection, jailbreaking, social engineering, data exfiltration, "
+        "harmful content requests, PII exposure, and policy violations.\n\n"
+        "Respond with ONLY a single decimal number between 0.0 and 1.0. Nothing else.\n\n"
+        f"User prompt: {prompt}"
+    )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": scoring_prompt}],
+            temperature=0.0,
+            max_tokens=10,
+        )
+        content = ""
+        if response.choices and response.choices[0].message:
+            content = response.choices[0].message.content or ""
+        # Extract the first float from the response
+        content = content.strip()
+        score = float(content)
+        return max(0.0, min(1.0, score))
+    except (ValueError, TypeError):
+        return 0.0
+    except Exception:
+        return 0.0
 
 
 def _apply_redactions(text: str, findings: List[Dict[str, object]]) -> str:
