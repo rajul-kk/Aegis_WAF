@@ -3,8 +3,7 @@
 colang_version: "2.x"
 
 models:
-  # Main LLM: Llama 3.3 70B via NVIDIA NIM
-  - type: main
+  - type: camel_agent
     engine: nim
     model: meta/llama-3.3-70b-instruct
     parameters:
