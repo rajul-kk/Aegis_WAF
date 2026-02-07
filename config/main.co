@@ -1,0 +1,192 @@
+# config/main.co
+# Aegis WAF - Colang 2.x Tiered Routing Logic
+
+import core
+import actions
+
+# =============================================================================
+# Flow: Main Entry Point - Aegis Tiered Routing
+# =============================================================================
+flow aegis tiered routing
+    """
+    The 'Security Sandwich' - 6-layer defense-in-depth pipeline.
+    Routes requests based on risk score thresholds.
+    """
+    user said $user_message
+
+    # Layer 1: Fast Scanner (deterministic regex, <10ms)
+    $scan_result = await FastScanAction(message=$user_message)
+
+    if $scan_result.blocked
+        bot say "Request blocked: {$scan_result.reason}"
+        $explanation = await ExplainBlockAction(
+            reason=$scan_result.reason,
+            pattern=$scan_result.pattern_matched,
+            category="fast_scan_block"
+        )
+        log security event $explanation
+        stop
+
+    # Layer 2: Intent Classification (Llama Guard 3 via NIM)
+    $risk_result = await ClassifyIntentAction(message=$user_message)
+    $risk_score = $risk_result.risk_score
+
+    # Layer 6: Update session risk (async, non-blocking)
+    send UpdateSessionRiskAsync(
+        session_id=$context.session_id,
+        risk_delta=$risk_score
+    )
+
+    # Route based on risk score thresholds
+    if $risk_score < 0.30
+        # Fast-track: Skip CAMEL, proceed to output validation
+        await fast track allow path
+    elif $risk_score <= 0.70
+        # Light CAMEL: 2 agents, 1 round
+        await light camel verification path
+    else
+        # Full CAMEL: 5 agents, multi-round consensus
+        await full camel verification path
+
+
+# =============================================================================
+# Flow: Fast Track Allow (risk < 0.30)
+# =============================================================================
+flow fast track allow path
+    """
+    Fast-track path for low-risk requests.
+    Target latency: <80ms total.
+    """
+    # Generate response using main LLM
+    $response = await GenerateResponseAction(context=$context)
+
+    # Layer 3.5: Output validation before returning
+    await validate and return output response=$response
+
+
+# =============================================================================
+# Flow: Light CAMEL Verification (0.30 <= risk <= 0.70)
+# =============================================================================
+flow light camel verification path
+    """
+    Light security council: 2 agents, 1 reasoning round.
+    Target latency: <500ms.
+    """
+    $camel_result = await CamelVerifyAction(
+        message=$user_message,
+        mode="light",
+        agents=["SecurityAnalyst", "PolicyEnforcer"],
+        rounds=1
+    )
+
+    if $camel_result.decision == "block"
+        bot say "Request blocked after security review: {$camel_result.reason}"
+        $explanation = await ExplainBlockAction(
+            reason=$camel_result.reason,
+            agents=$camel_result.participating_agents,
+            category="camel_light_block"
+        )
+        log security event $explanation
+        stop
+
+    # Passed verification, generate and validate response
+    $response = await GenerateResponseAction(context=$context)
+    await validate and return output response=$response
+
+
+# =============================================================================
+# Flow: Full CAMEL Verification (risk > 0.70)
+# =============================================================================
+flow full camel verification path
+    """
+    Full security council: 5 agents, multi-round consensus.
+    Target latency: <2000ms.
+    """
+    $camel_result = await CamelVerifyAction(
+        message=$user_message,
+        mode="full",
+        agents=[
+            "SecurityAnalyst",
+            "AdversarialTester", 
+            "PolicyEnforcer",
+            "EthicsReviewer",
+            "FinalArbiter"
+        ],
+        rounds=3,
+        consensus_threshold=0.6
+    )
+
+    if $camel_result.decision == "block"
+        bot say "Request blocked by security council: {$camel_result.reason}"
+        $explanation = await ExplainBlockAction(
+            reason=$camel_result.reason,
+            agents=$camel_result.participating_agents,
+            votes=$camel_result.vote_breakdown,
+            category="camel_full_block"
+        )
+        log security event $explanation
+        stop
+
+    # Passed full verification
+    $response = await GenerateResponseAction(context=$context)
+    await validate and return output response=$response
+
+
+# =============================================================================
+# Flow: Output Validation (Layer 3.5)
+# =============================================================================
+flow validate and return output response=$response
+    """
+    Layer 3.5: Validates AI responses before returning to user.
+    - Tool call whitelisting
+    - PII scrubbing
+    - Secret detection
+    """
+    $validated = await ValidateOutputAction(
+        response=$response,
+        check_tools=True,
+        scrub_pii=True,
+        detect_secrets=True
+    )
+
+    if $validated.blocked
+        bot say "Response blocked: contains disallowed content"
+        $explanation = await ExplainBlockAction(
+            reason=$validated.reason,
+            detected_issues=$validated.issues,
+            category="output_validation_block"
+        )
+        log security event $explanation
+        stop
+
+    # Return scrubbed/validated response
+    bot say $validated.cleaned_response
+
+
+# =============================================================================
+# Flow: Output Validation Rail
+# =============================================================================
+flow aegis output validation
+    """
+    Output rail that intercepts all bot responses for validation.
+    """
+    bot said $bot_message
+
+    $validated = await ValidateOutputAction(
+        response=$bot_message,
+        check_tools=True,
+        scrub_pii=True,
+        detect_secrets=True
+    )
+
+    if $validated.blocked
+        bot say "I cannot provide that response due to security policies."
+        stop
+
+    if $validated.was_modified
+        # Response was scrubbed, use cleaned version
+        bot say $validated.cleaned_response
+        stop
+
+    # Original response is safe
+    bot say $bot_message

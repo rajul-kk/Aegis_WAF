@@ -1,0 +1,28 @@
+# config/config.yml
+# Aegis WAF - NeMo Guardrails Configuration
+colang_version: "2.x"
+
+models:
+  # Main LLM: Llama 3.3 70B via NVIDIA NIM
+  - type: main
+    engine: nim
+    model: meta/llama-3.3-70b-instruct
+    parameters:
+      base_url: https://integrate.api.nvidia.com/v1
+      api_key: ${NVIDIA_API_KEY}
+      temperature: 0.3
+      max_tokens: 1024
+
+  # Security Judge: Llama Guard 3 via NVIDIA NIM
+  - type: llama_guard
+    engine: nim
+    model: meta/llama-guard-3-8b
+    parameters:
+      base_url: https://integrate.api.nvidia.com/v1
+      api_key: ${NVIDIA_API_KEY}
+
+rails:
+  config:
+    # Enables the built-in Llama Guard 3 checks in NeMo
+    llama_guard_3:
+      enabled: true
