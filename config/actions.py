@@ -386,6 +386,12 @@ def default_patterns() -> Dict[str, Dict[str, object]]:
     v40["description"] = "Reverse-text obfuscation attempt"
     patterns[k40] = v40
 
+    k41 = "fintech_schema_exfil"
+    v41: Dict[str, object] = {}
+    v41["regex"] = _rx(r"\b(give|show|get|dump|print|reveal|display|provide|list|describe|what is).{0,30}\b(json|xml|schema|struct|structure|model|table|database|db|data).{0,30}\b(of|for|about|from|behind).{0,20}\b(user|client|customer|account|transaction|payment|order|employee|member|person|record)\b")
+    v41["description"] = "Attempt to extract internal data schema or structure"
+    patterns[k41] = v41
+
     return patterns
 
 def check_suspicious_patterns(text: str) -> List[str]:
