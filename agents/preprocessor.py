@@ -94,9 +94,31 @@ def has_leetspeak(text: str) -> bool:
     return False
 
 
+def has_high_spacing(text: str) -> bool:
+    """Detects if text has unusually high ratio of spaces (e.g. 'I g n o r e')."""
+    if not text or len(text) < 10:
+        return False
+    space_count = text.count(' ')
+    ratio = space_count / len(text)
+    # Normal text usually < 0.2 spaces. "I g n o r e" is 0.5.
+    return ratio > 0.2
+
+def get_collapsed_spacing(text: str) -> str:
+    """Collapses expanded text (e.g. 'I g n o r e' -> 'Ignore')."""
+    return text.replace(' ', '')
+
 def preprocess_prompt(prompt: str) -> tuple[str, list[str]]:
     decoded_versions = []
     decodings_applied = []
+    
+    # 1. Spacing Normalization (Priority for regex matching)
+    if has_high_spacing(prompt):
+        collapsed = get_collapsed_spacing(prompt)
+        if collapsed != prompt and len(collapsed) > 5:
+            # Check if collapsing creates readable words (heuristic or just pass to scanner)
+            # For safety, we always attempt it if spacing is high
+            decoded_versions.append(f"[SPACING COLLAPSED]: {collapsed}")
+            decodings_applied.append("SpacingCollapsed")
     
     if is_likely_rot13(prompt):
         rot13_decoded = try_decode_rot13(prompt)
@@ -123,6 +145,7 @@ def preprocess_prompt(prompt: str) -> tuple[str, list[str]]:
             decodings_applied.append("Leetspeak")
     
     if decoded_versions:
+        # Prepend decoded versions for analysis
         preprocessed = "\n".join(decoded_versions) + f"\n\n[ORIGINAL PROMPT]: {prompt}"
     else:
         preprocessed = prompt

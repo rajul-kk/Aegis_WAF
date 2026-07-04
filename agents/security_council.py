@@ -160,56 +160,43 @@ class SecurityCouncil:
         
         print("[COUNCIL] Running full 5-agent mode")
         
-        intent_analysis = self.intent_analyst.analyze(prompt)
-        vote_record.add_vote(intent_analysis)
-        transcript.add_message(
-            agent="intent_analyst",
-            content=f"Assessment: {intent_analysis.assessment}\n"
-                   f"Confidence: {intent_analysis.confidence}\n"
-                   f"Reasoning: {intent_analysis.reasoning}"
-        )
+        # List of agent evaluators in order
+        agents = [
+            ("intent_analyst", lambda: self.intent_analyst.analyze(prompt)),
+            ("policy_auditor", lambda: self.policy_auditor.audit(prompt)),
+            ("adversarial_tester", lambda: self.adversarial_tester.analyze(prompt)),
+            ("context_analyzer", lambda: self.context_analyzer.analyze(prompt)),
+            ("data_guardian", lambda: self.data_guardian.analyze(prompt)),
+        ]
         
-        policy_analysis = self.policy_auditor.audit(prompt)
-        vote_record.add_vote(policy_analysis)
-        transcript.add_message(
-            agent="policy_auditor",
-            content=f"Assessment: {policy_analysis.assessment}\n"
-                   f"Confidence: {policy_analysis.confidence}\n"
-                   f"Reasoning: {policy_analysis.reasoning}"
-        )
+        agents_checked = 0
+        early_cutoff = False
         
-        adv_analysis = self.adversarial_tester.analyze(prompt)
-        vote_record.add_vote(adv_analysis)
-        transcript.add_message(
-            agent="adversarial_tester",
-            content=f"Assessment: {adv_analysis.assessment}\n"
-                   f"Confidence: {adv_analysis.confidence}\n"
-                   f"Reasoning: {adv_analysis.reasoning}"
-        )
-        
-        ctx_analysis = self.context_analyzer.analyze(prompt)
-        vote_record.add_vote(ctx_analysis)
-        transcript.add_message(
-            agent="context_analyzer",
-            content=f"Assessment: {ctx_analysis.assessment}\n"
-                   f"Confidence: {ctx_analysis.confidence}\n"
-                   f"Reasoning: {ctx_analysis.reasoning}"
-        )
-        
-        data_analysis = self.data_guardian.analyze(prompt)
-        vote_record.add_vote(data_analysis)
-        transcript.add_message(
-            agent="data_guardian",
-            content=f"Assessment: {data_analysis.assessment}\n"
-                   f"Confidence: {data_analysis.confidence}\n"
-                   f"Reasoning: {data_analysis.reasoning}"
-        )
+        for agent_name, analyze_fn in agents:
+            analysis = analyze_fn()
+            vote_record.add_vote(analysis)
+            agents_checked += 1
+            transcript.add_message(
+                agent=agent_name,
+                content=f"Assessment: {analysis.assessment}\n"
+                       f"Confidence: {analysis.confidence}\n"
+                       f"Reasoning: {analysis.reasoning}"
+            )
+            
+            # Check for early cutoff (3/5 consensus)
+            consensus_count = vote_record.get_consensus_count()
+            if consensus_count >= 3:
+                majority_vote = vote_record.get_majority()
+                print(f"[COUNCIL] Early cutoff: {majority_vote} ({consensus_count}/{agents_checked}) after {agents_checked} agents")
+                early_cutoff = True
+                break
         
         majority_vote = vote_record.get_majority()
         consensus_count = vote_record.get_consensus_count()
         total_agents = len(vote_record.agent_analyses)
         
-        print(f"[COUNCIL] Vote: {vote_record.vote_breakdown} | Majority: {majority_vote} ({consensus_count}/{total_agents})")
+        if not early_cutoff:
+            print(f"[COUNCIL] Vote: {vote_record.vote_breakdown} | Majority: {majority_vote} ({consensus_count}/{total_agents})")
         
         consensus_reached = consensus_count >= 3
         
@@ -250,7 +237,7 @@ class SecurityCouncil:
                 reason_code="CAMEL_BLOCK" if verdict == "BLOCK" else "CAMEL_ALLOW",
                 triggered_layers=[1, 2, 3] if verdict == "BLOCK" else [],
                 evidence=[a.reasoning[:100] + "..." for a in vote_record.agent_analyses[:3]],
-                human_summary=f"{'Blocked' if verdict == 'BLOCK' else 'Allowed'} by security council (5 agents, {consensus_count}/{total_agents} consensus)"
+                human_summary=f"{'Blocked' if verdict == 'BLOCK' else 'Allowed'} by security council ({total_agents} agents, {consensus_count}/{total_agents} consensus{' - early cutoff' if early_cutoff else ''})"
             ),
             metadata=RequestMetadata()
         )

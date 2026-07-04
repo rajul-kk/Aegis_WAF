@@ -7,6 +7,9 @@ openai>=1.0.0
 # NeMo Guardrails
 nemoguardrails>=0.10.0
 
+# Fast Regex Engine (used by scanner)
+google-re2>=1.0
+
 # Utilities
 python-dotenv>=1.0.0
 pydantic>=2.0.0

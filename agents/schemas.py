@@ -74,6 +74,7 @@ class ScanResult(BaseModel):
     """Layer 1 fast scan results."""
     patterns_checked: int = 0
     patterns_matched: list[str] = Field(default_factory=list)
+    decodings: list[str] = Field(default_factory=list)
     entropy_flag: bool = False
 
 
@@ -123,7 +124,7 @@ class AegisResponse(BaseModel):
     """Unified response schema for all Aegis WAF tiers."""
     decision: Literal["ALLOW", "BLOCK", "SANITIZED"] = "ALLOW"
     risk_score: float = Field(default=0.0, ge=0.0, le=1.0)
-    route: Literal["FAST_TRACK", "LIGHT_CAMEL", "FULL_CAMEL"] = "FAST_TRACK"
+    route: Literal["FAST_TRACK", "LIGHT_CAMEL", "FULL_CAMEL", "IMMEDIATE_BLOCK"] = "FAST_TRACK"
     latency_ms: LatencyBreakdown = Field(default_factory=LatencyBreakdown)
     scan: ScanResult = Field(default_factory=ScanResult)
     council: CouncilResult = Field(default_factory=CouncilResult)
