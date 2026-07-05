@@ -74,16 +74,26 @@ class SecurityCouncil:
                 concerns=["agent_unavailable"],
             )
 
-    def evaluate(self, prompt: str) -> AegisResponse:
-        preprocessed_prompt, decodings = preprocess_prompt(prompt)
-        
+    def evaluate(
+        self,
+        prompt: str,
+        preprocessed: Optional[str] = None,
+        decodings: Optional[list[str]] = None,
+        session_history: Optional[list[str]] = None,
+    ) -> AegisResponse:
+        # Callers that already ran preprocess_prompt (the gateway does, for
+        # Layer 1) can pass the result through to avoid decoding it a third time.
+        if preprocessed is None:
+            preprocessed, decodings = preprocess_prompt(prompt)
+        decodings = decodings or []
+
         if decodings:
             print(f"[PREPROCESSOR] Decoded: {', '.join(decodings)}")
-        
+
         if self.mode == "light":
-            return self._evaluate_light(preprocessed_prompt, decodings)
+            return self._evaluate_light(preprocessed, decodings)
         else:
-            return self._evaluate_full(preprocessed_prompt, decodings)
+            return self._evaluate_full(preprocessed, decodings, session_history=session_history)
     
     def _evaluate_light(self, prompt: str, decodings: list[str]) -> AegisResponse:
         start_time = time.time()
@@ -166,17 +176,17 @@ class SecurityCouncil:
             metadata=RequestMetadata()
         )
     
-    def _evaluate_full(self, prompt: str, decodings: list[str]) -> AegisResponse:
+    def _evaluate_full(self, prompt: str, decodings: list[str], session_history: Optional[list[str]] = None) -> AegisResponse:
         start_time = time.time()
         transcript = DebateTranscript()
         vote_record = VoteRecord()
-        
+
         if decodings:
             transcript.add_message(
                 agent="preprocessor",
                 content=f"Applied decodings: {', '.join(decodings)}"
             )
-        
+
         print("[COUNCIL] Running full 5-agent mode (parallel)")
 
         # All 5 agents analyze the prompt independently (unlike light mode,
@@ -186,7 +196,7 @@ class SecurityCouncil:
             ("intent_analyst", lambda: self.intent_analyst.analyze(prompt)),
             ("policy_auditor", lambda: self.policy_auditor.audit(prompt)),
             ("adversarial_tester", lambda: self.adversarial_tester.analyze(prompt)),
-            ("context_analyzer", lambda: self.context_analyzer.analyze(prompt)),
+            ("context_analyzer", lambda: self.context_analyzer.analyze(prompt, session_history=session_history)),
             ("data_guardian", lambda: self.data_guardian.analyze(prompt)),
         ]
 

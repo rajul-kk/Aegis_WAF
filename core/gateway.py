@@ -1,7 +1,8 @@
 import sys
 import os
+import threading
 import time
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 # Fix path for both module and standalone execution
 _dir = os.path.dirname(__file__)
@@ -25,6 +26,34 @@ load_dotenv()
 
 
 from agents.preprocessor import preprocess_prompt
+
+# ============== Session History (for context_analyzer) ==============
+# In-memory, per-process store so context_analyzer's behavioral/multi-turn
+# analysis has real history to compare against instead of always seeing a
+# single isolated prompt. Module-level (not per-AegisGateway) so history
+# survives across the aegis() convenience function's gateway instances too.
+# NOTE: process-local only - lost on restart, not shared across workers.
+# A real deployment would back this with Redis/a DB instead.
+_SESSION_HISTORY: Dict[str, List[str]] = {}
+_SESSION_HISTORY_LOCK = threading.Lock()
+_MAX_HISTORY_PER_SESSION = 10
+
+
+def _get_session_history(session_id: str) -> List[str]:
+    if not session_id:
+        return []
+    with _SESSION_HISTORY_LOCK:
+        return list(_SESSION_HISTORY.get(session_id, []))
+
+
+def _record_session_turn(session_id: str, prompt: str) -> None:
+    if not session_id:
+        return
+    with _SESSION_HISTORY_LOCK:
+        history = _SESSION_HISTORY.setdefault(session_id, [])
+        history.append(prompt)
+        del history[:-_MAX_HISTORY_PER_SESSION]
+
 
 # ============== Scanner Functions (from scanner.py) ==============
 
@@ -72,7 +101,11 @@ class AegisGateway:
     def __init__(self, enable_llm: bool = True):
         self.classifier = LlamaGuardClassifier()
         self.enable_llm = enable_llm
-        
+        # Built once and reused across requests: each holds several OpenAI
+        # clients, and constructing them fresh per request was pure overhead.
+        self.full_council = SecurityCouncil(mode="full")
+        self.light_council = SecurityCouncil(mode="light")
+
         if enable_llm:
             api_key = os.getenv("GROQ_API_KEY")
             if api_key:
@@ -95,6 +128,12 @@ class AegisGateway:
         # instructions in retrieved context rather than the user's own prompt,
         # so context must be scanned/classified alongside prompt, not ignored.
         analysis_target = f"{prompt}\n\n[RETRIEVED CONTEXT]:\n{context}" if context else prompt
+
+        # Snapshot prior turns before recording this one, so context_analyzer
+        # (Layer 3) can compare this prompt against what came before it in the
+        # session, not see itself as part of its own history.
+        session_history = _get_session_history(session_id)
+        _record_session_turn(session_id, prompt)
 
         # Preprocessing Layer (0)
         # Decode any obfuscation (Base64, Rot13, etc.)
@@ -183,23 +222,30 @@ class AegisGateway:
         
         elif risk_score <= 0.70:
             camel_start = time.time()
-            council = SecurityCouncil(mode="full")
-            camel_response = council.evaluate(analysis_target)
+            camel_response = self.full_council.evaluate(
+                analysis_target,
+                preprocessed=preprocessed_prompt,
+                decodings=decodings,
+                session_history=session_history,
+            )
             latency.camel_verification = int((time.time() - camel_start) * 1000)
             latency.total = int((time.time() - total_start) * 1000)
-            
+
             camel_response.latency_ms = latency
             camel_response.scan = to_scan_result(scan_result, decodings)
             camel_response.metadata.session_id = session_id
             return camel_response
-        
+
         else:
             camel_start = time.time()
-            council = SecurityCouncil(mode="light")
-            camel_response = council.evaluate(analysis_target)
+            camel_response = self.light_council.evaluate(
+                analysis_target,
+                preprocessed=preprocessed_prompt,
+                decodings=decodings,
+            )
             latency.camel_verification = int((time.time() - camel_start) * 1000)
             latency.total = int((time.time() - total_start) * 1000)
-            
+
             camel_response.latency_ms = latency
             camel_response.scan = to_scan_result(scan_result, decodings)
             camel_response.metadata.session_id = session_id
@@ -290,9 +336,20 @@ class AegisGateway:
 
 
 # Convenience function (previously in main.py)
+_default_gateway: Optional["AegisGateway"] = None
+_default_gateway_lock = threading.Lock()
+
+
 def aegis(prompt: str, session_id: str = "", context: str = "") -> dict:
-    gateway = AegisGateway(enable_llm=False)
-    response = gateway.process(prompt, session_id, context=context)
+    # Reused across calls instead of building a fresh gateway (and its
+    # OpenAI clients) every time - this is the hot path test scripts and
+    # other lightweight callers use.
+    global _default_gateway
+    if _default_gateway is None:
+        with _default_gateway_lock:
+            if _default_gateway is None:
+                _default_gateway = AegisGateway(enable_llm=False)
+    response = _default_gateway.process(prompt, session_id, context=context)
     return response.model_dump()
 
 
