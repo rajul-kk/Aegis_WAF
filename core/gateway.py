@@ -119,6 +119,9 @@ class AegisGateway:
             else:
                 self.llm_client = None
                 self.llm_model = None
+        else:
+            self.llm_client = None
+            self.llm_model = None
     
     def process(self, prompt: str, session_id: str = "", context: str = "") -> AegisResponse:
         total_start = time.time()
@@ -270,9 +273,10 @@ class AegisGateway:
                 "route": waf_result.route,
                 "explanation": waf_result.explanation.human_summary,
                 "latency_ms": waf_result.latency_ms.total,
-                "latency_breakdown": latency_breakdown
+                "latency_breakdown": latency_breakdown,
+                "waf_result": waf_dict
             }
-        
+
         if not self.llm_client:
             return {
                 "blocked": False,
@@ -280,7 +284,8 @@ class AegisGateway:
                 "risk_score": waf_result.risk_score,
                 "route": waf_result.route,
                 "latency_ms": waf_result.latency_ms.total,
-                "latency_breakdown": latency_breakdown
+                "latency_breakdown": latency_breakdown,
+                "waf_result": waf_dict
             }
         
         llm_start = time.time()
@@ -331,7 +336,8 @@ class AegisGateway:
             "llm_latency_ms": llm_latency,
             "tokens": response.usage.total_tokens,
             "latency_breakdown": latency_breakdown,
-            "output_blocked": output_blocked
+            "output_blocked": output_blocked,
+            "waf_result": waf_dict
         }
 
 
