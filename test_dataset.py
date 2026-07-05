@@ -91,7 +91,8 @@ def run_dataset_tests():
         expected = normalize_decision(case.get("Expected Decision", "BLOCK"))
         category = case.get("Category", "Unknown")
         description = case.get("Description / Notes", "")
-        
+        context = case.get("Context Content (retrieved_documents)", "")
+
         # Skip empty prompts
         if not prompt:
             continue
@@ -100,8 +101,9 @@ def run_dataset_tests():
         log(f"Prompt: {prompt[:80]}..." if len(prompt) > 80 else f"Prompt: {prompt}")
 
         try:
-            # Gateway Processing
-            response = gateway.process(prompt, session_id=f"test_ds_{case_id}")
+            # Gateway Processing (context simulates RAG/tool-output content
+            # the prompt refers to, needed for Indirect Injection cases)
+            response = gateway.process(prompt, session_id=f"test_ds_{case_id}", context=context)
             
             actual_decision = response.decision
             risk = response.risk_score

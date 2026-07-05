@@ -85,15 +85,20 @@ class AegisGateway:
                 self.llm_client = None
                 self.llm_model = None
     
-    def process(self, prompt: str, session_id: str = "") -> AegisResponse:
+    def process(self, prompt: str, session_id: str = "", context: str = "") -> AegisResponse:
         total_start = time.time()
         latency = LatencyBreakdown()
-        
+
+        # Indirect injection (RAG/tool-output poisoning) hides malicious
+        # instructions in retrieved context rather than the user's own prompt,
+        # so context must be scanned/classified alongside prompt, not ignored.
+        analysis_target = f"{prompt}\n\n[RETRIEVED CONTEXT]:\n{context}" if context else prompt
+
         # Preprocessing Layer (0)
         # Decode any obfuscation (Base64, Rot13, etc.)
-        preprocessed_prompt, decodings = preprocess_prompt(prompt)
+        preprocessed_prompt, decodings = preprocess_prompt(analysis_target)
         # Use preprocessed text for security scans to catch hidden attacks
-        scan_target = preprocessed_prompt if decodings else prompt
+        scan_target = preprocessed_prompt if decodings else analysis_target
         
         # Layer 1: Fast Scanner
         scan_start = time.time()
@@ -121,10 +126,9 @@ class AegisGateway:
         
         # Layer 2: Llama Guard Classification
         classify_start = time.time()
-        # Pass raw prompt because classifier handles its own preprocessing if needed,
-        # OR better: pass result to avoid re-work? The classifier calls preprocess_prompt internally.
-        # Let's keep it as is for now, but note the redundancy.
-        risk_assessment = self.classifier.classify(prompt)
+        # Classify prompt + retrieved context together (the classifier calls
+        # preprocess_prompt internally, redundant but harmless on already-clean text).
+        risk_assessment = self.classifier.classify(analysis_target)
         latency.intent_classification = int((time.time() - classify_start) * 1000)
         
         risk_score = risk_assessment.score
@@ -178,7 +182,7 @@ class AegisGateway:
         elif risk_score <= 0.70:
             camel_start = time.time()
             council = SecurityCouncil(mode="full")
-            camel_response = council.evaluate(prompt)
+            camel_response = council.evaluate(analysis_target)
             latency.camel_verification = int((time.time() - camel_start) * 1000)
             latency.total = int((time.time() - total_start) * 1000)
             
@@ -190,7 +194,7 @@ class AegisGateway:
         else:
             camel_start = time.time()
             council = SecurityCouncil(mode="light")
-            camel_response = council.evaluate(prompt)
+            camel_response = council.evaluate(analysis_target)
             latency.camel_verification = int((time.time() - camel_start) * 1000)
             latency.total = int((time.time() - total_start) * 1000)
             
@@ -199,8 +203,8 @@ class AegisGateway:
             camel_response.metadata.session_id = session_id
             return camel_response
     
-    def chat(self, prompt: str, session_id: str = "", max_tokens: int = 1024) -> dict:
-        waf_result = self.process(prompt, session_id)
+    def chat(self, prompt: str, session_id: str = "", max_tokens: int = 1024, context: str = "") -> dict:
+        waf_result = self.process(prompt, session_id, context=context)
         waf_dict = waf_result.model_dump()
         
         latency_breakdown = {
@@ -284,9 +288,9 @@ class AegisGateway:
 
 
 # Convenience function (previously in main.py)
-def aegis(prompt: str, session_id: str = "") -> dict:
+def aegis(prompt: str, session_id: str = "", context: str = "") -> dict:
     gateway = AegisGateway(enable_llm=False)
-    response = gateway.process(prompt, session_id)
+    response = gateway.process(prompt, session_id, context=context)
     return response.model_dump()
 
 
