@@ -78,7 +78,9 @@ class AegisGateway:
             if api_key:
                 self.llm_client = OpenAI(
                     api_key=api_key,
-                    base_url="https://api.groq.com/openai/v1"
+                    base_url="https://api.groq.com/openai/v1",
+                    timeout=30.0,
+                    max_retries=1,
                 )
                 self.llm_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
             else:
@@ -126,9 +128,9 @@ class AegisGateway:
         
         # Layer 2: Llama Guard Classification
         classify_start = time.time()
-        # Classify prompt + retrieved context together (the classifier calls
-        # preprocess_prompt internally, redundant but harmless on already-clean text).
-        risk_assessment = self.classifier.classify(analysis_target)
+        # Classify prompt + retrieved context together. Pass the already-computed
+        # preprocessed text so the classifier doesn't redo the same decoding pass.
+        risk_assessment = self.classifier.classify(analysis_target, preprocessed=preprocessed_prompt)
         latency.intent_classification = int((time.time() - classify_start) * 1000)
         
         risk_score = risk_assessment.score

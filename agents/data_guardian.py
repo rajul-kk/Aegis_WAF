@@ -30,6 +30,10 @@ class DataGuardian:
         self.client = OpenAI(
             api_key=self.api_key,
             base_url=self.base_url,
+            # A single slow/unavailable backend must not hang a
+            # security-critical call for the SDK's ~10 minute default.
+            timeout=10.0,
+            max_retries=0,
         )
         
         self.name = "data_guardian"

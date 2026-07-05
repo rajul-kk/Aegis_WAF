@@ -22,7 +22,9 @@ class ProtectedGroqWrapper:
         
         self.client = OpenAI(
             api_key=self.api_key,
-            base_url="https://api.groq.com/openai/v1"
+            base_url="https://api.groq.com/openai/v1",
+            timeout=30.0,
+            max_retries=1,
         )
     
     def chat(self, prompt: str, session_id: str = "", max_tokens: int = 1024, temperature: float = 0.7) -> dict:

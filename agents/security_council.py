@@ -5,7 +5,8 @@ Returns unified AegisResponse format for consistency with production API.
 """
 import os
 import time
-from typing import Optional, Literal
+import concurrent.futures
+from typing import Callable, Optional, Literal
 
 from dotenv import load_dotenv
 
@@ -58,6 +59,21 @@ class SecurityCouncil:
             self.context_analyzer = ContextAnalyzer(api_key=api_key, base_url=base_url)
             self.data_guardian = DataGuardian(api_key=api_key, base_url=base_url)
     
+    def _safe_agent_call(self, agent_name: str, fn: Callable[[], AgentAnalysis]) -> AgentAnalysis:
+        """Runs one agent call, turning any API failure (timeout, 5xx, etc.)
+        into an UNCERTAIN vote instead of letting it crash the whole request."""
+        try:
+            return fn()
+        except Exception as e:
+            print(f"[COUNCIL] {agent_name} failed: {e}")
+            return AgentAnalysis(
+                agent_name=agent_name,
+                assessment="UNCERTAIN",
+                confidence=0.0,
+                reasoning=f"Agent unavailable: {e}",
+                concerns=["agent_unavailable"],
+            )
+
     def evaluate(self, prompt: str) -> AegisResponse:
         preprocessed_prompt, decodings = preprocess_prompt(prompt)
         
@@ -79,15 +95,18 @@ class SecurityCouncil:
                 content=f"Applied decodings: {', '.join(decodings)}"
             )
         
-        intent_analysis = self.intent_analyst.analyze(prompt)
+        # Sequential by design: policy_auditor considers intent_analyst's
+        # assessment (a real debate turn), so this pair can't be parallelized
+        # without dropping that cross-agent reasoning.
+        intent_analysis = self._safe_agent_call("intent_analyst", lambda: self.intent_analyst.analyze(prompt))
         transcript.add_message(
             agent="intent_analyst",
             content=f"Assessment: {intent_analysis.assessment}\n"
                    f"Confidence: {intent_analysis.confidence}\n"
                    f"Reasoning: {intent_analysis.reasoning}"
         )
-        
-        policy_analysis = self.policy_auditor.audit(prompt, intent_analysis)
+
+        policy_analysis = self._safe_agent_call("policy_auditor", lambda: self.policy_auditor.audit(prompt, intent_analysis))
         transcript.add_message(
             agent="policy_auditor",
             content=f"Assessment: {policy_analysis.assessment}\n"
@@ -158,9 +177,11 @@ class SecurityCouncil:
                 content=f"Applied decodings: {', '.join(decodings)}"
             )
         
-        print("[COUNCIL] Running full 5-agent mode")
-        
-        # List of agent evaluators in order
+        print("[COUNCIL] Running full 5-agent mode (parallel)")
+
+        # All 5 agents analyze the prompt independently (unlike light mode,
+        # none of them depend on another agent's output here), so they run
+        # concurrently instead of one network round trip at a time.
         agents = [
             ("intent_analyst", lambda: self.intent_analyst.analyze(prompt)),
             ("policy_auditor", lambda: self.policy_auditor.audit(prompt)),
@@ -168,28 +189,41 @@ class SecurityCouncil:
             ("context_analyzer", lambda: self.context_analyzer.analyze(prompt)),
             ("data_guardian", lambda: self.data_guardian.analyze(prompt)),
         ]
-        
+
         agents_checked = 0
         early_cutoff = False
-        
-        for agent_name, analyze_fn in agents:
-            analysis = analyze_fn()
-            vote_record.add_vote(analysis)
-            agents_checked += 1
-            transcript.add_message(
-                agent=agent_name,
-                content=f"Assessment: {analysis.assessment}\n"
-                       f"Confidence: {analysis.confidence}\n"
-                       f"Reasoning: {analysis.reasoning}"
-            )
-            
-            # Check for early cutoff (3/5 consensus)
-            consensus_count = vote_record.get_consensus_count()
-            if consensus_count >= 3:
-                majority_vote = vote_record.get_majority()
-                print(f"[COUNCIL] Early cutoff: {majority_vote} ({consensus_count}/{agents_checked}) after {agents_checked} agents")
-                early_cutoff = True
-                break
+
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(agents))
+        try:
+            future_to_agent = {
+                executor.submit(self._safe_agent_call, name, fn): name
+                for name, fn in agents
+            }
+            for future in concurrent.futures.as_completed(future_to_agent):
+                agent_name = future_to_agent[future]
+                analysis = future.result()
+                vote_record.add_vote(analysis)
+                agents_checked += 1
+                transcript.add_message(
+                    agent=agent_name,
+                    content=f"Assessment: {analysis.assessment}\n"
+                           f"Confidence: {analysis.confidence}\n"
+                           f"Reasoning: {analysis.reasoning}"
+                )
+
+                # Check for early cutoff (3/5 consensus). The remaining
+                # in-flight calls are left to finish in the background
+                # (executor.shutdown(wait=False) below) rather than blocking
+                # the response on agents whose vote can no longer change the
+                # outcome.
+                consensus_count = vote_record.get_consensus_count()
+                if consensus_count >= 3:
+                    majority_vote = vote_record.get_majority()
+                    print(f"[COUNCIL] Early cutoff: {majority_vote} ({consensus_count}/{agents_checked}) after {agents_checked} agents")
+                    early_cutoff = True
+                    break
+        finally:
+            executor.shutdown(wait=False)
         
         majority_vote = vote_record.get_majority()
         consensus_count = vote_record.get_consensus_count()

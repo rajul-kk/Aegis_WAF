@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import math
 import os
 import re2
@@ -156,7 +157,10 @@ def detect_masking_techniques(text: str) -> List[str]:
     
     return findings
 
+@functools.lru_cache(maxsize=1)
 def default_patterns() -> Dict[str, Dict[str, object]]:
+    # Compiling all ~50 regexes is pure CPU work with no per-request inputs,
+    # so it only needs to happen once per process instead of on every scan.
 
     patterns: Dict[str, Dict[str, object]] = {}
 
@@ -733,7 +737,9 @@ def _run_llama_guard_sync(prompt: str) -> Dict[str, object]:
     if not api_key or OpenAI is None:
         return _classifier_unavailable_result("Llama Guard classifier not configured (missing NVIDIA_NIM_API_KEY/NVIDIA_API_KEY)")
 
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    # A slow/unavailable classifier backend must fail fast, not hang for the
+    # SDK's ~10 minute default (timeout x retries) - see _classifier_error_result.
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=10.0, max_retries=0)
 
     try:
         try:

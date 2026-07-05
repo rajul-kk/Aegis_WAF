@@ -8,6 +8,8 @@ if _dir not in sys.path:
 if os.path.join(_dir, '..') not in sys.path:
     sys.path.insert(0, os.path.join(_dir, '..'))
 
+from typing import Optional
+
 from config.actions import _llama_guard_prompt, _run_llama_guard_sync
 from agents.schemas import RiskAssessment
 from agents.preprocessor import preprocess_prompt
@@ -20,11 +22,14 @@ ZERO_TOLERANCE = {"S7", "S21", "S6", "S3"}  # CSAM, Illegal, Suicide, Criminal
 class LlamaGuardClassifier:
     def __init__(self):
         pass
-    
-    def classify(self, prompt: str) -> RiskAssessment:
-        # Preprocess prompt to decode obfuscations (Base64, Leetspeak, etc.)
-        preprocessed, decodings = preprocess_prompt(prompt)
-        
+
+    def classify(self, prompt: str, preprocessed: Optional[str] = None) -> RiskAssessment:
+        # Callers that already ran preprocess_prompt (e.g. the gateway, which
+        # needs it for Layer 1 too) can pass the result through to avoid
+        # decoding the same text twice.
+        if preprocessed is None:
+            preprocessed, _decodings = preprocess_prompt(prompt)
+
         # Use preprocessed text for Llama Guard analysis
         guard_prompt = _llama_guard_prompt(preprocessed)
         result = _run_llama_guard_sync(guard_prompt)
