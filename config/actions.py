@@ -159,7 +159,7 @@ def default_patterns() -> Dict[str, Dict[str, object]]:
 
     k3 = "pi_jailbreak_mode"
     v3: Dict[str, object] = {}
-    v3["regex"] = _rx(r"\b(developer mode|god mode|jailbreak|dan mode|dude mode|kevin mode|unfiltered mode|unrestricted mode|evil mode|opposite mode|mirror mode)\b")
+    v3["regex"] = _rx(r"\b(developer mode|god mode|jailbreak|dan mode|dude mode|kevin mode|unfiltered mode|unrestricted mode|evil mode|opposite mode|mirror mode|do anything now)\b")
     v3["description"] = "Known jailbreak keywords"
     patterns[k3] = v3
 
