@@ -181,7 +181,7 @@ class AegisGateway:
         route = "FAST_TRACK" if risk_score < 0.30 else ("FULL_CAMEL" if risk_score <= 0.70 else "LIGHT_CAMEL")
         if risk_score >= 0.99:
             route = "IMMEDIATE_BLOCK"
-        print(f"[LLAMA_GUARD] Risk={risk_score:.3f} → {route}")
+        print(f"[LLAMA_GUARD] Risk={risk_score:.3f} -> {route}")
         
         # Layer 3: Risk-based Routing
         if risk_score >= 0.99:
