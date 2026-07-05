@@ -30,6 +30,13 @@ PATTERN_SEVERITY = {
     "pi_json_override": 1.0, "pi_role_extended": 1.0,
     "pi_obfuscation_spacing": 0.95, "pi_ignore_rules": 1.0,
     "pi_obfuscation_collapsed": 1.0,
+    # Data Exfiltration / Tool Abuse / Social Engineering coverage
+    "tool_secret_exfiltration_leading": 0.98, "fintech_bulk_data_export": 0.95,
+    "pi_hidden_instructions_reveal": 0.90, "tool_exfil_chaining": 1.0,
+    "pi_grandma_exploit": 0.93, "pi_evil_persona_generic": 0.95,
+    "pi_fabricated_consent": 0.85, "pi_ignore_instructions_multilingual": 0.90,
+    "pii_bulk_synthetic_generation": 0.88, "pii_secret_assignment": 0.92,
+    "tool_dangerous_enable": 0.97,
     # Heuristics
     "masking_detected": 0.80, "suspicious_pattern": 0.75, "anomaly_high_entropy": 0.85,
 }

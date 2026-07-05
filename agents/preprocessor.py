@@ -107,6 +107,22 @@ def get_collapsed_spacing(text: str) -> str:
     """Collapses expanded text (e.g. 'I g n o r e' -> 'Ignore')."""
     return text.replace(' ', '')
 
+
+_REVERSED_MARKERS = [
+    "ignore", "instructions", "system", "reveal", "bypass", "override",
+    "credentials", "secrets", "password", "api keys", "prompt",
+]
+
+
+def is_likely_reversed(text: str) -> bool:
+    """Detects text written backwards, e.g. '.snoitcurtsni erongI'."""
+    reversed_lower = text[::-1].lower()
+    return any(marker in reversed_lower for marker in _REVERSED_MARKERS)
+
+
+def try_decode_reversed(text: str) -> str:
+    return text[::-1]
+
 def preprocess_prompt(prompt: str) -> tuple[str, list[str]]:
     decoded_versions = []
     decodings_applied = []
@@ -143,7 +159,12 @@ def preprocess_prompt(prompt: str) -> tuple[str, list[str]]:
         if leet_decoded != prompt:
             decoded_versions.append(f"[LEETSPEAK DECODED]: {leet_decoded}")
             decodings_applied.append("Leetspeak")
-    
+
+    if is_likely_reversed(prompt):
+        reversed_decoded = try_decode_reversed(prompt)
+        decoded_versions.append(f"[REVERSED TEXT DECODED]: {reversed_decoded}")
+        decodings_applied.append("ReversedText")
+
     if decoded_versions:
         # Prepend decoded versions for analysis
         preprocessed = "\n".join(decoded_versions) + f"\n\n[ORIGINAL PROMPT]: {prompt}"

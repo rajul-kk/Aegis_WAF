@@ -107,14 +107,29 @@ def normalize_text(text: str) -> str:
     cleaned = re2.sub(pattern_s, "", text)
     return cleaned
 
+# Common cross-script homoglyphs (Cyrillic/Greek) used to evade literal
+# keyword matching, e.g. "Igнore" using Cyrillic characters that render
+# identically to Latin ones. NFKD normalization alone doesn't catch these
+# since they're distinct characters, not decomposable forms.
+_CONFUSABLES = str.maketrans({
+    "а": "a", "А": "A", "е": "e", "Е": "E", "о": "o", "О": "O",
+    "р": "p", "Р": "P", "с": "c", "С": "C", "х": "x", "Х": "X",
+    "у": "y", "У": "Y", "і": "i", "І": "I", "ѕ": "s", "Ѕ": "S",
+    "м": "m", "М": "M", "н": "h", "Н": "H", "к": "k", "К": "K",
+    "т": "t", "Т": "T", "в": "b", "В": "B", "ԁ": "d",
+    "α": "a", "ο": "o", "ρ": "p", "υ": "u", "τ": "t", "ν": "v",
+})
+
+
 def normalize_unicode_confusables(text: str) -> str:
 
     if not text:
         return ""
-    
-    normalized = unicodedata.normalize('NFKD', text)
+
+    deconfused = text.translate(_CONFUSABLES)
+    normalized = unicodedata.normalize('NFKD', deconfused)
     cleaned = ''.join(c for c in normalized if not unicodedata.combining(c))
-    
+
     return cleaned
 
 def detect_masking_techniques(text: str) -> List[str]:
@@ -147,13 +162,13 @@ def default_patterns() -> Dict[str, Dict[str, object]]:
 
     k1 = "pi_ignore_instructions"
     v1: Dict[str, object] = {}
-    v1["regex"] = _rx(r"\b(ignore|disregard|forget)\b.{0,30}\b(previous|prior|above|all|earlier)\b.{0,30}\b(instructions?|directives?|prompts?|rules?)\b")
+    v1["regex"] = _rx(r"\b(ignore|disregard|forget|discard|abandon|nullify|scrap)\b.{0,15}\b(the|your|all|any)?\s*(previous|prior|above|earlier|safety|security)?\s*\b(instructions?|directives?|prompts?|rules?|guidelines?|polic(?:y|ies))\b")
     v1["description"] = "Attempt to override prior instructions"
     patterns[k1] = v1
 
     k2 = "pi_role_manipulation"
     v2: Dict[str, object] = {}
-    v2["regex"] = _rx(r"\b(you are now|now you are|from now on|starting now|act as|pretend to be|roleplay as|simulate being|behave like)\b.{0,50}\b(developer|admin|root|system|god|unrestricted|unfiltered|uncensored)\b")
+    v2["regex"] = _rx(r"\b(you are now|now you are|from now on|starting now|act as|pretend to be|roleplay as|simulate being|behave like|you are an?)\b.{0,50}\b(developer|admin|root|system|god|unrestricted|unfiltered|uncensored)\b")
     v2["description"] = "Attempt to manipulate AI role or persona"
     patterns[k2] = v2
 
@@ -165,7 +180,7 @@ def default_patterns() -> Dict[str, Dict[str, object]]:
 
     k4 = "pi_system_injection"
     v4: Dict[str, object] = {}
-    v4["regex"] = _rx(r"(system:|<\|system\|>|<s>|\[system\]|{system}|\bsystem message\b|\bsystem prompt\b)")
+    v4["regex"] = _rx(r"(system:|<\|system\|>|<s>|\[system\]|{system}|<system>|</system>|\bsystem message\b|\bsystem prompt\b|\bnew instructions\b)")
     v4["description"] = "Attempt to inject system-level messages"
     patterns[k4] = v4
 
@@ -189,7 +204,7 @@ def default_patterns() -> Dict[str, Dict[str, object]]:
 
     k8 = "pi_safety_bypass"
     v8: Dict[str, object] = {}
-    v8["regex"] = _rx(r"\b(disable|turn off|deactivate|remove|bypass).{0,30}\b(safety|guardrails?|filters?|restrictions?|limitations?|protections?|checks?)\b")
+    v8["regex"] = _rx(r"\b(disable|turn off|deactivate|remove|bypass|override)\b.{0,30}\b(safety|guardrails?|filters?|restrictions?|limitations?|protections?|checks?|polic(?:y|ies)|controls?)\b")
     v8["description"] = "Attempt to disable safety mechanisms"
     patterns[k8] = v8
 
@@ -219,7 +234,7 @@ def default_patterns() -> Dict[str, Dict[str, object]]:
 
     k13 = "pi_hypothetical"
     v13: Dict[str, object] = {}
-    v13["regex"] = _rx(r"\b(hypothetically|theoretically|in theory|imagine if|what if|suppose|let's say).{0,50}\b(you could|I could|we could|one could).{0,50}\b(access|transfer|modify|delete|bypass|override)\b")
+    v13["regex"] = _rx(r"\b(hypothetically|theoretically|in theory|imagine if|what if|suppose|let's say)\b.{0,90}\b(access|transfer|modify|delete|bypass|override|extract|obtain|retrieve|reveal|disclose)\b")
     v13["description"] = "Hypothetical scenario to bypass restrictions"
     patterns[k13] = v13
 
@@ -323,13 +338,13 @@ def default_patterns() -> Dict[str, Dict[str, object]]:
 
     k30 = "tool_exec_attempt"
     v30: Dict[str, object] = {}
-    v30["regex"] = _rx(r"\b(os\.system|subprocess\.Popen|eval\(|exec\(|__import__|compile\(|/bin/sh|/bin/bash|cmd\.exe|powershell)\b")
+    v30["regex"] = _rx(r"\b(os\.system|subprocess\.Popen|eval\(|exec\(|__import__|compile\(|/bin/sh|/bin/bash|cmd\.exe|powershell|sudo\b|rm\s+-rf?\b)")
     v30["description"] = "Code execution primitives"
     patterns[k30] = v30
 
     k31 = "tool_file_operations"
     v31: Dict[str, object] = {}
-    v31["regex"] = _rx(r"\b(open\(|read\(|write\(|delete|unlink|rmdir|chmod|chown).{0,20}(\/etc\/|\/var\/|\/root\/|\/home\/|c:\\|\.\.\/)\b")
+    v31["regex"] = _rx(r"\b(open|read|write|delete|unlink|rmdir|chmod|chown)\b\(?.{0,20}(\/etc\/|\/var\/|\/root\/|\/home\/|c:\\|\.\.\/)")
     v31["description"] = "Suspicious file system operations"
     patterns[k31] = v31
 
@@ -341,13 +356,13 @@ def default_patterns() -> Dict[str, Dict[str, object]]:
 
     k33 = "social_urgency"
     v33: Dict[str, object] = {}
-    v33["regex"] = _rx(r"\b(urgent|immediately|right now|asap|emergency|critical|time sensitive).{0,50}\b(transfer|send|approve|authorize|process|unlock|reset)\b")
+    v33["regex"] = _rx(r"\b(urgent|immediately|right now|asap|emergency|critical|time sensitive)\b.{0,50}\b(transfer|send|approve|authorize|process|unlock|reset|export|disclose|reveal|provide|share|dump)\b")
     v33["description"] = "Urgency-based social engineering"
     patterns[k33] = v33
 
     k34 = "social_authority"
     v34: Dict[str, object] = {}
-    v34["regex"] = _rx(r"\b(I am|this is|speaking as).{0,30}\b(ceo|cto|manager|supervisor|director|administrator|support team|security team|compliance officer)\b")
+    v34["regex"] = _rx(r"\b(I am|this is|speaking as)\b.{0,30}\b(ceo|cto|manager|supervisor|director|administrator|support team|security team|security operations|auditor|regulator|compliance officer)\b")
     v34["description"] = "Authority figure impersonation"
     patterns[k34] = v34
 
@@ -361,7 +376,7 @@ def default_patterns() -> Dict[str, Dict[str, object]]:
 
     k36 = "pi_json_override"
     v36: Dict[str, object] = {}
-    v36["regex"] = _rx(r'("admin_override"|"reveal_secrets"|"exec":\s*"|"system_override"|"bypass_security":\s*true)')
+    v36["regex"] = _rx(r'("admin_override"|"reveal_secrets"|"exec":\s*"|"system_override"|"bypass_security":\s*true|"role"\s*:\s*"system")')
     v36["description"] = "JSON payload smuggling attempt"
     patterns[k36] = v36
 
@@ -390,6 +405,79 @@ def default_patterns() -> Dict[str, Dict[str, object]]:
     v40["regex"] = _rx(r"(ignore\s*all\s*rules|bypass\s*security|system\s*override|reveal\s*secrets|exec\s*ute)")
     v40["description"] = "Collapsed keyword obfuscation"
     patterns[k40] = v40
+
+    # --- Data Exfiltration / Tool Abuse / Social Engineering coverage ---
+
+    k41 = "tool_secret_exfiltration_leading"
+    v41: Dict[str, object] = {}
+    # Same intent as tool_secret_exfiltration but catches verb-before-noun
+    # phrasing, e.g. "List all API keys" / "Print the value of all env vars"
+    v41["regex"] = _rx(r"\b(list|show|print|display|reveal|expose|dump|extract|exfiltrate|export)\b.{0,40}\b(api[_ -]?keys?|access[_ -]?tokens?|secret[_ -]?keys?|private[_ -]?keys?|credentials?|environment variables?|env vars?|connection strings?|configuration)\b")
+    v41["description"] = "Attempt to exfiltrate secrets or credentials (leading verb)"
+    patterns[k41] = v41
+
+    k42 = "fintech_bulk_data_export"
+    v42: Dict[str, object] = {}
+    v42["regex"] = _rx(r"\b(export|dump|extract)\b.{0,40}\b(transaction history|account (data|records)|client (data|records)|customer (data|records))\b")
+    v42["description"] = "Attempt to bulk-export account/transaction data"
+    patterns[k42] = v42
+
+    k43 = "pi_hidden_instructions_reveal"
+    v43: Dict[str, object] = {}
+    v43["regex"] = _rx(r"\b(show|print|reveal|display|tell)\b.{0,40}\b(hidden|internal|confidential|secret)\b.{0,30}\b(instructions?|rules?|prompt|configuration|parameters?)\b")
+    v43["description"] = "Attempt to reveal hidden/system instructions"
+    patterns[k43] = v43
+
+    k44 = "tool_exfil_chaining"
+    v44: Dict[str, object] = {}
+    # A data dump/query chained with an outbound send is a strong tool-abuse
+    # signal regardless of exact wording (e.g. "SELECT ... then POST to URL",
+    # "pg_dump ... | curl ...").
+    v44["regex"] = _rx(r"\b(select|pg_dump|mysqldump)\b.{0,150}\b(post|curl|send|upload|exfiltrate)\b")
+    v44["description"] = "Data dump chained with outbound exfiltration"
+    patterns[k44] = v44
+
+    k45 = "pi_grandma_exploit"
+    v45: Dict[str, object] = {}
+    v45["regex"] = _rx(r"\b(grandma|grandmother)\b.{0,80}\b(read|tell|recite)\b.{0,60}\b(api\s*keys?|passwords?|secrets?|credentials?|tokens?)\b")
+    v45["description"] = "Fictional-persona ('grandma exploit') social engineering"
+    patterns[k45] = v45
+
+    k46 = "pi_evil_persona_generic"
+    v46: Dict[str, object] = {}
+    v46["regex"] = _rx(r"\b(evil|dark|chaos|unfiltered)[-\s]?(gpt|ai|bot)\b")
+    v46["description"] = "Generic evil-persona jailbreak name"
+    patterns[k46] = v46
+
+    k47 = "pi_fabricated_consent"
+    v47: Dict[str, object] = {}
+    v47["regex"] = _rx(r"\b(you (already )?agreed|as (we|you) (previously )?discussed|as previously agreed|continuing from (our|the) previous conversation)\b.{0,60}\b(access|bypass|provide|share|export|help me)\b")
+    v47["description"] = "Fabricated prior-consent social engineering"
+    patterns[k47] = v47
+
+    k48 = "pi_ignore_instructions_multilingual"
+    v48: Dict[str, object] = {}
+    v48["regex"] = _rx(r"(ignorer\s+toutes\s+les\s+instructions|ignora\s+todas\s+las\s+instrucciones|ignoriere\s+alle\s+(vorherigen\s+)?anweisungen|ignora\s+tutte\s+le\s+istruzioni)")
+    v48["description"] = "Non-English 'ignore instructions' phrasing"
+    patterns[k48] = v48
+
+    k49 = "pii_bulk_synthetic_generation"
+    v49: Dict[str, object] = {}
+    v49["regex"] = _rx(r"\b(generate|create|produce)\b.{0,40}\b(sample|realistic|fake|synthetic|mock|dummy)\b.{0,40}\b(client|customer|user)\b.{0,20}\b(records?|data|profiles?)\b")
+    v49["description"] = "Bulk generation of realistic-looking synthetic PII"
+    patterns[k49] = v49
+
+    k50 = "pii_secret_assignment"
+    v50: Dict[str, object] = {}
+    v50["regex"] = _rx(r"\b[a-zA-Z_]*(secret|token|api[_-]?key)[a-zA-Z_]*\s*=\s*\S{3,}")
+    v50["description"] = "Secret-looking key=value assignment requested/produced"
+    patterns[k50] = v50
+
+    k51 = "tool_dangerous_enable"
+    v51: Dict[str, object] = {}
+    v51["regex"] = _rx(r"\ballow(?:ing)? execution of\b.{0,40}\b(sql_exec|shell_exec|exec|eval|os\.system)\b")
+    v51["description"] = "Attempt to enable dangerous tool execution"
+    patterns[k51] = v51
 
     return patterns
 
