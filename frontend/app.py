@@ -108,23 +108,34 @@ with tab_tester:
         on_change=_apply_selected_example,
     )
 
-    prompt_input = st.text_input("Message", key="prompt_input")
-    context_input = st.text_area(
-        "Optional: retrieved context / tool output", key="context_input", height=80
-    )
-
-    if st.button("Send", key="send_btn", type="primary") and prompt_input.strip():
-        st.session_state.conversation.append({"role": "user", "content": prompt_input})
+    def _handle_send():
+        # on_click callback: runs before the script body re-executes, so
+        # clearing prompt_input/context_input here is safe (unlike setting
+        # them after the widgets have already been instantiated in the
+        # current run, which Streamlit forbids).
+        prompt_text = st.session_state.prompt_input
+        if not prompt_text.strip():
+            return
+        context_text = st.session_state.context_input
+        st.session_state.conversation.append({"role": "user", "content": prompt_text})
         try:
             result = gateway.chat(
-                prompt_input,
+                prompt_text,
                 session_id=st.session_state.session_id,
-                context=context_input,
+                context=context_text,
             )
         except Exception as e:
             result = {"error": str(e)}
         st.session_state.conversation.append({"role": "assistant", "content": result})
-        st.rerun()
+        st.session_state.prompt_input = ""
+        st.session_state.context_input = ""
+
+    st.text_input("Message", key="prompt_input")
+    st.text_area(
+        "Optional: retrieved context / tool output", key="context_input", height=80
+    )
+
+    st.button("Send", key="send_btn", type="primary", on_click=_handle_send)
 
 with tab_log:
     rows = []

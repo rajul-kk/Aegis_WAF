@@ -37,8 +37,10 @@ PATTERN_SEVERITY = {
     "pi_fabricated_consent": 0.85, "pi_ignore_instructions_multilingual": 0.90,
     "pii_bulk_synthetic_generation": 0.88, "pii_secret_assignment": 0.92,
     "tool_dangerous_enable": 0.97,
+    "pi_indirect_paraphrase_exfil": 0.88,
     # Heuristics
     "masking_detected": 0.80, "suspicious_pattern": 0.75, "anomaly_high_entropy": 0.85,
+    "pi_ignore_instructions_fuzzy": 0.88,
 }
 
 def get_pattern_severity(pattern_id: str) -> float:
