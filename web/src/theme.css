@@ -1,0 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;600&family=Newsreader:wght@400;500&family=JetBrains+Mono:wght@600&display=swap');
+
+:root {
+  --aegis-primary: #10B981;
+  --aegis-secondary: #3B82F6;
+  --aegis-background: #FFFFFF;
+  --aegis-surface: #F9FAFB;
+  --aegis-text-primary: #111827;
+  --aegis-text-secondary: #4B5563;
+  --aegis-border: #E5E7EB;
+  --aegis-block: #dc2626;
+  --aegis-block-text: #b91c1c;
+
+  --aegis-font-display: 'Inter', sans-serif;
+  --aegis-font-body: 'Newsreader', serif;
+  --aegis-font-label: 'JetBrains Mono', monospace;
+
+  --aegis-radius-card: 16px;
+  --aegis-radius-control: 8px;
+  --aegis-radius-pill: 9999px;
+}
+
+html, body, #root {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--aegis-background);
+  color: var(--aegis-text-primary);
+  font-family: var(--aegis-font-body);
+}
+
+* {
+  box-sizing: border-box;
+}

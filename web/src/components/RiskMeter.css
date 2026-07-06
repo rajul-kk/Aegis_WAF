@@ -1,0 +1,45 @@
+.decision-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--aegis-font-label);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: var(--aegis-radius-pill);
+  margin-top: 4px;
+}
+
+.decision-chip.allow {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--aegis-primary);
+}
+
+.decision-chip.block {
+  background: rgba(220, 38, 38, 0.1);
+  color: var(--aegis-block-text);
+}
+
+.risk-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-family: var(--aegis-font-label);
+  font-size: 11px;
+  color: var(--aegis-text-secondary);
+}
+
+.risk-track {
+  flex: 1;
+  max-width: 160px;
+  height: 6px;
+  background: var(--aegis-border);
+  border-radius: var(--aegis-radius-pill);
+  overflow: hidden;
+}
+
+.risk-fill {
+  height: 100%;
+  border-radius: var(--aegis-radius-pill);
+}

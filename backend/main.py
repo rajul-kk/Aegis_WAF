@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.gateway import AegisGateway
 from backend.connection_manager import ConnectionManager
 from backend.schemas import ChatRequest
+from frontend.examples import load_examples
 
 manager = ConnectionManager()
 
@@ -34,6 +35,11 @@ app.add_middleware(
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/api/examples")
+async def examples():
+    return load_examples()
 
 
 @app.post("/api/chat")

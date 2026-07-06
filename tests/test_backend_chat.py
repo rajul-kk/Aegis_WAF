@@ -35,3 +35,13 @@ def test_chat_attack_prompt_blocked():
         body = resp.json()
         assert body["blocked"] is True
         assert body["waf_result"]["decision"] == "BLOCK"
+
+
+def test_examples_returns_nonempty_list():
+    with TestClient(app) as client:
+        resp = client.get("/api/examples")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert isinstance(body, list)
+        assert len(body) > 0
+        assert "prompt" in body[0]

@@ -1,0 +1,129 @@
+.aegis-app {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+}
+
+.aegis-nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-family: var(--aegis-font-display);
+  font-weight: 600;
+  font-size: 15px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--aegis-border);
+  margin-bottom: 16px;
+}
+
+.aegis-nav .session-id {
+  font-family: var(--aegis-font-label);
+  font-size: 11px;
+  color: var(--aegis-text-secondary);
+}
+
+.aegis-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.aegis-btn {
+  font-family: var(--aegis-font-display);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: var(--aegis-radius-control);
+  border: 1px solid var(--aegis-border);
+  background: #fff;
+  color: var(--aegis-text-primary);
+  cursor: pointer;
+}
+
+.aegis-btn:hover {
+  background: var(--aegis-surface);
+}
+
+.aegis-btn.primary {
+  background: var(--aegis-primary);
+  border-color: var(--aegis-primary);
+  color: #fff;
+}
+
+.aegis-btn.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.aegis-feed {
+  min-height: 120px;
+  margin-bottom: 20px;
+}
+
+.aegis-msg {
+  margin-bottom: 14px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.aegis-msg .who {
+  font-family: var(--aegis-font-label);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--aegis-text-secondary);
+  display: block;
+  margin-bottom: 2px;
+}
+
+.aegis-msg .assistant-response {
+  margin: 6px 0 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--aegis-border);
+  color: var(--aegis-text-secondary);
+}
+
+.aegis-empty {
+  color: var(--aegis-text-secondary);
+  font-size: 14px;
+  padding: 20px 0;
+}
+
+.aegis-composer {
+  border-top: 1px solid var(--aegis-border);
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.aegis-composer select,
+.aegis-composer input,
+.aegis-composer textarea {
+  font-family: var(--aegis-font-body);
+  font-size: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--aegis-border);
+  border-radius: var(--aegis-radius-control);
+  background: #fff;
+  color: var(--aegis-text-primary);
+  width: 100%;
+}
+
+.aegis-composer label {
+  font-family: var(--aegis-font-label);
+  font-size: 11px;
+  color: var(--aegis-text-secondary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.aegis-composer-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.aegis-composer-row .field {
+  flex: 1;
+}

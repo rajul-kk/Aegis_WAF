@@ -1,0 +1,26 @@
+.aegis-trace-details {
+  margin-top: 8px;
+}
+
+.aegis-trace-details summary {
+  cursor: pointer;
+  font-family: var(--aegis-font-label);
+  font-size: 11px;
+  color: var(--aegis-text-secondary);
+}
+
+.aegis-trace {
+  margin-top: 8px;
+  padding: 12px 14px;
+  background: var(--aegis-surface);
+  border: 1px solid var(--aegis-border);
+  border-radius: var(--aegis-radius-control);
+  font-family: var(--aegis-font-label);
+  font-size: 12px;
+  color: var(--aegis-text-secondary);
+  line-height: 1.7;
+}
+
+.aegis-trace b {
+  color: var(--aegis-text-primary);
+}
