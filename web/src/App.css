@@ -34,16 +34,6 @@
   gap: 12px;
 }
 
-.session-pill {
-  font-family: var(--aegis-font-label);
-  font-size: 11px;
-  color: var(--aegis-text-secondary);
-  background: var(--aegis-surface);
-  border: 1px solid var(--aegis-border);
-  border-radius: var(--aegis-radius-pill);
-  padding: 4px 12px;
-}
-
 .aegis-btn {
   font-family: var(--aegis-font-display);
   font-size: 13px;

@@ -68,7 +68,6 @@ function App() {
           Aegis<span className="accent">WAF</span>
         </span>
         <div className="nav-right">
-          <span className="session-pill">session {sessionId.slice(0, 8)}</span>
           <button className="aegis-btn" onClick={handleNewSession}>
             New Session
           </button>
