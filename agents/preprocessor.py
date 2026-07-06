@@ -108,6 +108,36 @@ def get_collapsed_spacing(text: str) -> str:
     return text.replace(' ', '')
 
 
+_MORSE_CODE = {
+    '.-': 'A', '-...': 'B', '-.-.': 'C', '-..': 'D', '.': 'E', '..-.': 'F',
+    '--.': 'G', '....': 'H', '..': 'I', '.---': 'J', '-.-': 'K', '.-..': 'L',
+    '--': 'M', '-.': 'N', '---': 'O', '.--.': 'P', '--.-': 'Q', '.-.': 'R',
+    '...': 'S', '-': 'T', '..-': 'U', '...-': 'V', '.--': 'W', '-..-': 'X',
+    '-.--': 'Y', '--..': 'Z',
+    '-----': '0', '.----': '1', '..---': '2', '...--': '3', '....-': '4',
+    '.....': '5', '-....': '6', '--...': '7', '---..': '8', '----.': '9',
+}
+
+
+def is_likely_morse(text: str) -> bool:
+    """Detects Morse code: only dots, dashes, spaces, and '/' word separators."""
+    core = text.strip().replace(' ', '').replace('/', '')
+    if len(core) < 4:
+        return False
+    return all(c in '.-' for c in core)
+
+
+def try_decode_morse(text: str) -> Optional[str]:
+    words = text.strip().split('/')
+    decoded_words = []
+    for word in words:
+        letters = word.strip().split()
+        decoded = ''.join(_MORSE_CODE.get(letter, '') for letter in letters if letter)
+        if decoded:
+            decoded_words.append(decoded)
+    return ' '.join(decoded_words) or None
+
+
 _REVERSED_MARKERS = [
     "ignore", "instructions", "system", "reveal", "bypass", "override",
     "credentials", "secrets", "password", "api keys", "prompt",
@@ -164,6 +194,12 @@ def preprocess_prompt(prompt: str) -> tuple[str, list[str]]:
         reversed_decoded = try_decode_reversed(prompt)
         decoded_versions.append(f"[REVERSED TEXT DECODED]: {reversed_decoded}")
         decodings_applied.append("ReversedText")
+
+    if is_likely_morse(prompt):
+        morse_decoded = try_decode_morse(prompt)
+        if morse_decoded:
+            decoded_versions.append(f"[MORSE DECODED]: {morse_decoded}")
+            decodings_applied.append("Morse")
 
     if decoded_versions:
         # Prepend decoded versions for analysis
