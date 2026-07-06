@@ -11,7 +11,7 @@ export default function ConversationFeed({ conversation }) {
       {conversation.map((turn, i) => {
         if (turn.role === 'user') {
           return (
-            <div className="aegis-msg" key={i}>
+            <div className="aegis-msg user" key={i}>
               <span className="who">YOU</span>
               {turn.content}
             </div>
@@ -21,7 +21,7 @@ export default function ConversationFeed({ conversation }) {
         const result = turn.content
         if (result.error) {
           return (
-            <div className="aegis-msg" key={i}>
+            <div className="aegis-msg assistant" key={i}>
               <span className="who">AEGIS</span>
               Request failed: {result.error}
             </div>
@@ -29,8 +29,9 @@ export default function ConversationFeed({ conversation }) {
         }
 
         const decision = result.blocked ? 'BLOCK' : 'ALLOW'
+        const decisionClass = result.blocked ? 'block' : 'allow'
         return (
-          <div className="aegis-msg" key={i}>
+          <div className={`aegis-msg assistant ${decisionClass}`} key={i}>
             <span className="who">AEGIS</span>
             <RiskMeter riskScore={result.risk_score || 0} decision={decision} />
             {result.response === '[LLM not configured - set GROQ_API_KEY in .env]' ? (

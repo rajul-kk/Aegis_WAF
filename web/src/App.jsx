@@ -64,14 +64,15 @@ function App() {
   return (
     <div className="aegis-app">
       <div className="aegis-nav">
-        🛡️ Aegis WAF
-        <span className="session-id">session {sessionId.slice(0, 8)}</span>
-      </div>
-
-      <div className="aegis-toolbar">
-        <button className="aegis-btn" onClick={handleNewSession}>
-          New Session
-        </button>
+        <span className="wordmark">
+          Aegis<span className="accent">WAF</span>
+        </span>
+        <div className="nav-right">
+          <span className="session-pill">session {sessionId.slice(0, 8)}</span>
+          <button className="aegis-btn" onClick={handleNewSession}>
+            New Session
+          </button>
+        </div>
       </div>
 
       <ConversationFeed conversation={conversation} />
