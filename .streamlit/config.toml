@@ -1,0 +1,9 @@
+[theme]
+# Mirrors the tokens in frontend/theme.py / synaptiq-interface-remixed-DESIGN.md
+# so Streamlit's own chrome (primary buttons, etc.) matches the custom-CSS
+# parts of the page instead of Streamlit's default red.
+primaryColor = "#10B981"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F9FAFB"
+textColor = "#111827"
+font = "serif"

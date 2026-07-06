@@ -18,3 +18,8 @@ data/
 
 # Brainstorming companion
 .superpowers/
+
+# Local dev/testing tool output (not app source)
+.playwright-mcp/
+graphify-out/
+aegis-dashboard-*.png
