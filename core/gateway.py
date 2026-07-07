@@ -18,7 +18,7 @@ from agents.schemas import (
     OutputValidationResult, Explanation, RequestMetadata, AgentVote
 )
 from agents.security_council import SecurityCouncil
-from config.actions import scan_text
+from config.actions import scan_text, has_meta_discussion_framing
 from severity import calculate_risk_from_patterns, get_risk_score, get_category_name
 from classifiers import LlamaGuardClassifier
 
@@ -59,7 +59,17 @@ def _record_session_turn(session_id: str, prompt: str) -> None:
 
 def fast_scan(text: str) -> Dict[str, object]:
     findings = scan_text(text, enable_heuristics=False)
-    
+
+    # A bare "this contains a base64-looking substring" signal is too broad to
+    # hard-block on alone (any legitimate base64 JSON/debugging payload trips
+    # it) - only let it stand if something else here is also suspicious.
+    non_trivial = [
+        f for f in findings
+        if not (f.get("rule_id") == "masking_detected" and f.get("match") == "Base64-like pattern detected")
+    ]
+    if not non_trivial:
+        findings = []
+
     pattern_ids: List[str] = []
     entropy_flag = False
     
@@ -149,7 +159,11 @@ class AegisGateway:
         scan_result = fast_scan(scan_target)
         latency.fast_scan = int((time.time() - scan_start) * 1000)
         
-        if scan_result["blocked"]:
+        # A match that's quoted/fenced for review or reporting (a WAF unit
+        # test, an incident report quoting a captured attack) isn't a live
+        # instruction - skip the immediate Layer-1 block and let Llama
+        # Guard/the council make the actual call instead of auto-allowing it.
+        if scan_result["blocked"] and not has_meta_discussion_framing(scan_target):
             latency.total = int((time.time() - total_start) * 1000)
             return AegisResponse(
                 decision="BLOCK",
