@@ -18,8 +18,8 @@ from agents.schemas import (
     OutputValidationResult, Explanation, RequestMetadata, AgentVote
 )
 from agents.security_council import SecurityCouncil
-from config.actions import scan_text, has_meta_discussion_framing
-from severity import calculate_risk_from_patterns, get_risk_score, get_category_name
+from config.actions import scan_text, has_meta_discussion_framing, detect_exfil_channel
+from severity import calculate_risk_from_patterns, get_risk_score, get_category_name, detect_adversarial_fatigue
 from classifiers import LlamaGuardClassifier
 from session_store import SessionStore
 
@@ -137,6 +137,11 @@ class AegisGateway:
         session_history = _get_session_history(session_id)
         _record_session_turn(session_id, prompt)
 
+        # Prior risk scores this session, for adversarial-fatigue detection -
+        # a pattern of repeated elevated-risk attempts is itself a signal,
+        # even when each individual attempt was separately resolved.
+        risk_history = _session_store.get_risk_history(session_id)
+
         # Preprocessing Layer (0)
         # Decode any obfuscation (Base64, Rot13, etc.)
         preprocessed_prompt, decodings = preprocess_prompt(analysis_target)
@@ -154,6 +159,7 @@ class AegisGateway:
         # Guard/the council make the actual call instead of auto-allowing it.
         if scan_result["blocked"] and not has_meta_discussion_framing(scan_target):
             latency.total = int((time.time() - total_start) * 1000)
+            _session_store.record_risk(session_id, scan_result["risk_score"])
             return AegisResponse(
                 decision="BLOCK",
                 risk_score=scan_result["risk_score"],
@@ -190,6 +196,7 @@ class AegisGateway:
         if risk_score >= 0.99:
             # Immediate Block (Zero Tolerance)
             latency.total = int((time.time() - total_start) * 1000)
+            _session_store.record_risk(session_id, risk_score)
             return AegisResponse(
                 decision="BLOCK",
                 risk_score=risk_score,
@@ -207,8 +214,9 @@ class AegisGateway:
                 metadata=RequestMetadata(session_id=session_id)
             )
             
-        if risk_score < 0.30:
+        if risk_score < 0.30 and not detect_adversarial_fatigue(risk_history):
             latency.total = int((time.time() - total_start) * 1000)
+            _session_store.record_risk(session_id, risk_score)
             return AegisResponse(
                 decision="ALLOW",
                 risk_score=risk_score,
@@ -225,7 +233,29 @@ class AegisGateway:
                 ),
                 metadata=RequestMetadata(session_id=session_id)
             )
-        
+
+        elif risk_score < 0.30:
+            # This turn alone looks low-risk, but the session shows a pattern
+            # of repeated elevated-risk attempts (adversarial fatigue) - skip
+            # the blind fast-track allow and get a quick council read instead.
+            camel_start = time.time()
+            camel_response = self.light_council.evaluate(
+                analysis_target,
+                preprocessed=preprocessed_prompt,
+                decodings=decodings,
+            )
+            latency.camel_verification = int((time.time() - camel_start) * 1000)
+            latency.total = int((time.time() - total_start) * 1000)
+
+            camel_response.latency_ms = latency
+            camel_response.scan = to_scan_result(scan_result, decodings)
+            camel_response.metadata.session_id = session_id
+            camel_response.explanation.evidence.append(
+                "Escalated from fast-track: repeated elevated-risk attempts this session (adversarial fatigue)"
+            )
+            _session_store.record_risk(session_id, risk_score)
+            return camel_response
+
         elif risk_score <= 0.70:
             camel_start = time.time()
             camel_response = self.full_council.evaluate(
@@ -240,6 +270,7 @@ class AegisGateway:
             camel_response.latency_ms = latency
             camel_response.scan = to_scan_result(scan_result, decodings)
             camel_response.metadata.session_id = session_id
+            _session_store.record_risk(session_id, risk_score)
             return camel_response
 
         else:
@@ -255,6 +286,7 @@ class AegisGateway:
             camel_response.latency_ms = latency
             camel_response.scan = to_scan_result(scan_result, decodings)
             camel_response.metadata.session_id = session_id
+            _session_store.record_risk(session_id, risk_score)
             return camel_response
     
     def chat(self, prompt: str, session_id: str = "", max_tokens: int = 1024, context: str = "") -> dict:
@@ -307,8 +339,19 @@ class AegisGateway:
         
         # Risk-based Output Validation
         input_risk = waf_result.risk_score
-        
-        if 0.3 <= input_risk <= 0.7:
+
+        # Exfiltration-channel check runs unconditionally, independent of the
+        # input's measured risk level - EchoLeak (CVE-2025-32711) showed the
+        # attack succeeds through the *output* channel (an auto-rendered
+        # image/link carrying stolen data in its URL) regardless of how safe
+        # the original request looked to input-side classification.
+        exfil_findings = detect_exfil_channel(llm_content)
+        if exfil_findings:
+            output_blocked = True
+            output_reason = f"Output blocked: {exfil_findings[0]}"
+            llm_content = f"[CLOAKED] {output_reason}"
+            print(f"[OUTPUT_VAL] Blocked by exfil-channel check: {exfil_findings[0]}")
+        elif 0.3 <= input_risk <= 0.7:
             # Medium Risk: Regex Scan
             scan_out = fast_scan(llm_content)
             if scan_out["blocked"]:

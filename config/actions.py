@@ -176,6 +176,24 @@ def detect_fuzzy_override_phrase(text: str, threshold: float = 0.78) -> Optional
     return None
 
 
+def detect_exfil_channel(text: str) -> List[str]:
+    """Detects markdown links/images whose URL carries a long, encoded-looking
+    query parameter - the pattern EchoLeak (CVE-2025-32711) used to exfiltrate
+    data via an auto-rendered image whose URL secretly carried stolen content.
+    Input-side detection alone isn't enough here: the attack succeeds through
+    the *output* channel regardless of how safe the request looked, so this
+    runs on LLM output independent of the input's measured risk level."""
+    findings: List[str] = []
+    link_pattern = r'!?\[[^\]]*\]\((https?://[^)\s]+)\)'
+    for match in re2.finditer(link_pattern, text):
+        url = match.group(1)
+        is_image = match.group(0).startswith('!')
+        if re2.search(r'[?&]\w+=[A-Za-z0-9%+/_=-]{20,}', url):
+            kind = "Auto-rendered image" if is_image else "Link"
+            findings.append(f"{kind} with suspicious long query parameter: {url[:100]}")
+    return findings
+
+
 # Phrases indicating the prompt is discussing/reviewing/reporting on an
 # attack string rather than issuing it live (e.g. reviewing a WAF unit test,
 # writing an incident report about a captured attack).

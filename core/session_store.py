@@ -14,6 +14,7 @@ except Exception:
 _MAX_HISTORY_PER_SESSION = 10
 _SESSION_TTL_SECONDS = 24 * 60 * 60
 _KEY_PREFIX = "aegis:session:"
+_RISK_KEY_PREFIX = "aegis:risk:"
 
 
 class SessionStore:
@@ -40,29 +41,48 @@ class SessionStore:
     def _key(self, session_id: str) -> str:
         return f"{_KEY_PREFIX}{session_id}"
 
-    def get_history(self, session_id: str) -> List[str]:
-        if not session_id:
-            return []
+    def _risk_key(self, session_id: str) -> str:
+        return f"{_RISK_KEY_PREFIX}{session_id}"
+
+    def _get_list(self, key: str, what: str) -> List[str]:
         try:
-            return self._client.lrange(self._key(session_id), 0, -1)
+            return self._client.lrange(key, 0, -1)
         except Exception as e:
-            # Missing multi-turn context degrades context_analyzer's
-            # reasoning quality, but it's not a security-critical failure -
-            # a Redis outage shouldn't take down the whole WAF request path.
-            print(f"[SESSION_STORE] get_history failed, degrading to empty history: {e}")
+            # A missing history degrades reasoning quality (context_analyzer's
+            # multi-turn analysis, or fatigue detection), but it's not a
+            # security-critical failure - a Redis outage shouldn't take down
+            # the whole WAF request path.
+            print(f"[SESSION_STORE] {what} failed, degrading to empty history: {e}")
             return []
 
-    def record_turn(self, session_id: str, prompt: str) -> None:
-        if not session_id:
-            return
-        key = self._key(session_id)
+    def _push(self, key: str, value: str, what: str) -> None:
         try:
             # Oldest-first order preserved: RPUSH appends, LTRIM keeps the
             # most recent _MAX_HISTORY_PER_SESSION entries via negative indices.
             pipe = self._client.pipeline()
-            pipe.rpush(key, prompt)
+            pipe.rpush(key, value)
             pipe.ltrim(key, -_MAX_HISTORY_PER_SESSION, -1)
             pipe.expire(key, _SESSION_TTL_SECONDS)
             pipe.execute()
         except Exception as e:
-            print(f"[SESSION_STORE] record_turn failed, this turn won't be in future history: {e}")
+            print(f"[SESSION_STORE] {what} failed, this entry won't be in future history: {e}")
+
+    def get_history(self, session_id: str) -> List[str]:
+        if not session_id:
+            return []
+        return self._get_list(self._key(session_id), "get_history")
+
+    def record_turn(self, session_id: str, prompt: str) -> None:
+        if not session_id:
+            return
+        self._push(self._key(session_id), prompt, "record_turn")
+
+    def get_risk_history(self, session_id: str) -> List[float]:
+        if not session_id:
+            return []
+        return [float(v) for v in self._get_list(self._risk_key(session_id), "get_risk_history")]
+
+    def record_risk(self, session_id: str, risk_score: float) -> None:
+        if not session_id:
+            return
+        self._push(self._risk_key(session_id), str(risk_score), "record_risk")

@@ -76,3 +76,19 @@ def get_risk_score(category: str) -> float:
 
 def get_category_name(category: str) -> str:
     return get_category_info(category)[0]
+
+
+# ============== Adversarial Fatigue (session-level probing detection) ==============
+
+def detect_adversarial_fatigue(
+    risk_scores: List[float],
+    threshold: float = 0.3,
+    min_hits: int = 3,
+    window: int = 5,
+) -> bool:
+    """Flags a session showing a pattern of repeated elevated-risk attempts
+    (each individually resolved, e.g. via the council, but the pattern itself
+    is a probing signal) rather than judging each prompt in isolation."""
+    recent = risk_scores[-window:]
+    hits = sum(1 for score in recent if score >= threshold)
+    return hits >= min_hits

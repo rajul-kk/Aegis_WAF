@@ -66,3 +66,42 @@ def test_get_history_degrades_to_empty_on_redis_failure():
 def test_record_turn_does_not_raise_on_redis_failure():
     store = SessionStore(client=_BrokenClient())
     store.record_turn("s1", "prompt")  # should not raise
+
+
+def test_empty_risk_history_for_unknown_session():
+    store = _store()
+    assert store.get_risk_history("unknown") == []
+
+
+def test_records_and_retrieves_risk_scores_in_order():
+    store = _store()
+    store.record_risk("s1", 0.2)
+    store.record_risk("s1", 0.65)
+    assert store.get_risk_history("s1") == [0.2, 0.65]
+
+
+def test_risk_history_isolated_from_prompt_history():
+    store = _store()
+    store.record_turn("s1", "some prompt")
+    store.record_risk("s1", 0.4)
+    assert store.get_history("s1") == ["some prompt"]
+    assert store.get_risk_history("s1") == [0.4]
+
+
+def test_risk_history_capped_at_max_per_session():
+    store = _store()
+    for i in range(15):
+        store.record_risk("s1", i / 100)
+    history = store.get_risk_history("s1")
+    assert len(history) == 10
+    assert history == [round(i / 100, 2) for i in range(5, 15)]
+
+
+def test_get_risk_history_degrades_to_empty_on_redis_failure():
+    store = SessionStore(client=_BrokenClient())
+    assert store.get_risk_history("s1") == []
+
+
+def test_record_risk_does_not_raise_on_redis_failure():
+    store = SessionStore(client=_BrokenClient())
+    store.record_risk("s1", 0.5)  # should not raise
