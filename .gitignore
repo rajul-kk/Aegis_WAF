@@ -13,8 +13,9 @@ __pycache__/
 .DS_Store
 test_output.txt
 
-# Data
-data/
+# Data (CSV benchmark fixtures are tracked - CI needs them)
+data/*
+!data/*.csv
 
 # Brainstorming companion
 .superpowers/

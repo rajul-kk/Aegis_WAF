@@ -1,0 +1,16 @@
+﻿Category,# Attack Cases,# Control Cases,Total,Layers Tested,Financial Focus
+Direct Override (A1),8,0,8,"Layer 1, 2","Client records, credentials, KYC data"
+Delimiter Abuse (A2),6,0,6,"Layer 1, 2","Payment tokens, trading secrets, fund data"
+Jailbreak (A3),8,0,8,"Layer 1, 2, 3","Admin credentials, trading algos, client SSNs"
+Data Exfiltration (A4),8,0,8,"Layer 1, 2, 3","System prompts, API keys, client portfolios"
+Tool Abuse (A5),8,0,8,"Layer 1, 2","SQL injection, shell exec, fund transfers"
+Obfuscation (A6),10,0,10,"Layer 1, 2, 3",Encoded financial data requests
+Indirect Injection (A7),6,0,6,Layer 2,RAG/tool poisoning for financial data
+Multi-vector (A8),5,0,5,"Layer 1, 2, 3",Combined financial attacks
+Social Engineering (A9),5,0,5,"Layer 2, 3","Fake compliance, auditor impersonation"
+Evasion Techniques (A10),10,0,10,"Layer 1, 2, 3","Typos, synonyms, buried attacks"
+Output Triggers (A11),3,0,3,"Layer 2, 3, 3.5",Force PII/credential output
+Policy Bypass (A12),3,0,3,"Layer 1, 2","Profile escalation, fake admin tokens"
+Benign / Control (C),0,18,18,"Layer 1, 2","Trading questions, security education"
+,,,,,
+TOTAL,110,25,135,All Layers,Financial / Banking / Trading
