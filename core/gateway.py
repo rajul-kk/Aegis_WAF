@@ -21,6 +21,7 @@ from agents.security_council import SecurityCouncil
 from config.actions import scan_text, has_meta_discussion_framing
 from severity import calculate_risk_from_patterns, get_risk_score, get_category_name
 from classifiers import LlamaGuardClassifier
+from session_store import SessionStore
 
 load_dotenv()
 
@@ -28,31 +29,19 @@ load_dotenv()
 from agents.preprocessor import preprocess_prompt
 
 # ============== Session History (for context_analyzer) ==============
-# In-memory, per-process store so context_analyzer's behavioral/multi-turn
-# analysis has real history to compare against instead of always seeing a
-# single isolated prompt. Module-level (not per-AegisGateway) so history
-# survives across the aegis() convenience function's gateway instances too.
-# NOTE: process-local only - lost on restart, not shared across workers.
-# A real deployment would back this with Redis/a DB instead.
-_SESSION_HISTORY: Dict[str, List[str]] = {}
-_SESSION_HISTORY_LOCK = threading.Lock()
-_MAX_HISTORY_PER_SESSION = 10
+# Redis-backed so context_analyzer's behavioral/multi-turn analysis has real
+# history that survives restarts and is shared across worker processes.
+# Module-level (not per-AegisGateway) so history survives across the aegis()
+# convenience function's gateway instances too.
+_session_store = SessionStore()
 
 
 def _get_session_history(session_id: str) -> List[str]:
-    if not session_id:
-        return []
-    with _SESSION_HISTORY_LOCK:
-        return list(_SESSION_HISTORY.get(session_id, []))
+    return _session_store.get_history(session_id)
 
 
 def _record_session_turn(session_id: str, prompt: str) -> None:
-    if not session_id:
-        return
-    with _SESSION_HISTORY_LOCK:
-        history = _SESSION_HISTORY.setdefault(session_id, [])
-        history.append(prompt)
-        del history[:-_MAX_HISTORY_PER_SESSION]
+    _session_store.record_turn(session_id, prompt)
 
 
 # ============== Scanner Functions (from scanner.py) ==============
