@@ -25,7 +25,13 @@ class AdversarialTester:
             "NVIDIA_BASE_URL", 
             "https://integrate.api.nvidia.com/v1"
         )
-        self.model = model or os.getenv("LLAMA_MODEL_LIGHT", "meta/llama-3.1-8b-instruct")
+        # Deliberately a different model family from the other 4 council
+        # seats (all Llama variants): majority-vote consensus is specifically
+        # exploitable when agents share a backbone and its blind spots (the
+        # "MAD-Spear" conformity attack) - one heterogeneous seat means a
+        # false consensus needs to fool two genuinely different models, not
+        # just one model talking to itself five times.
+        self.model = model or os.getenv("ADVERSARIAL_MODEL", "mistralai/mixtral-8x7b-instruct-v0.1")
         
         self.client = OpenAI(
             api_key=self.api_key,
