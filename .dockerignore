@@ -1,0 +1,14 @@
+.git/
+web/node_modules/
+web/dist/
+tests/
+docs/
+.superpowers/
+.playwright-mcp/
+graphify-out/
+data/
+*.log
+*.png
+__pycache__/
+*.pyc
+.env
