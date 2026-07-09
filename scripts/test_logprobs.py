@@ -9,8 +9,9 @@ import json
 from datetime import datetime
 from typing import List, Dict, Any, Tuple
 
-# Ensure we can import core modules
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Ensure we can import core modules (script now lives in scripts/, one level
+# below the repo root where core/agents/config/data actually live)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 try:
     from core.gateway import AegisGateway

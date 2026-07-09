@@ -21,6 +21,13 @@ data/*
 # Brainstorming companion
 .superpowers/
 
+# Docs/design references - kept locally, not tracked
+docs/
+
+# Generated test-run output snapshots
+aegis_test_results.json
+test_results.json
+
 # Local dev/testing tool output (not app source)
 .playwright-mcp/
 graphify-out/

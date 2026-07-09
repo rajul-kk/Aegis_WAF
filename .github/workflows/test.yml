@@ -38,4 +38,4 @@ jobs:
       - name: Run attack dataset benchmark
         env:
           REDIS_URL: redis://localhost:6379/0
-        run: python test_dataset.py
+        run: python scripts/test_dataset.py

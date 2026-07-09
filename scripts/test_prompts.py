@@ -4,7 +4,11 @@ Advanced Test Prompts for Aegis_WAF Security Council
 Uses the AegisGateway to test the full Layer 1 -> Layer 2 -> Layer 3 pipeline.
 """
 import json
+import os
+import sys
 import time
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
 from core.gateway import AegisGateway
 from agents.schemas import AegisResponse
 

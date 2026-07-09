@@ -1,5 +1,5 @@
-"""Design tokens sourced from synaptiq-interface-remixed-DESIGN.md, and the
-CSS that applies them to the Streamlit-rendered dashboard."""
+"""Design tokens sourced from docs/synaptiq-interface-remixed-design.md, and
+the CSS that applies them to the Streamlit-rendered dashboard."""
 
 PRIMARY = "#10B981"
 SECONDARY = "#3B82F6"

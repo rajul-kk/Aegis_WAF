@@ -4,9 +4,12 @@ Verify fixes for previously failed test cases:
 2. Roleplay (Pattern Match Layer 1)
 3. Word Splitting (Obfuscation) - Should be caught by Layer 2 via Preprocessor
 """
+import os
 import time
 import sys
 import io
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
 from core.gateway import AegisGateway
 
 # Force UTF-8 for everything
