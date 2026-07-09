@@ -1,125 +1,88 @@
-# Aegis AI WAF
+# Aegis WAF
 
-Aegis is an advanced AI-powered Web Application Firewall (WAF) designed to protect large language models (LLMs) and their applications from sophisticated attacks such as prompt injection, jailbreaking, and adversarial instructions. It employs a multi-layered, tiered AI reasoning architecture to efficiently classify and neutralize threats while minimizing latency for legitimate requests.
+Aegis is a multi-layer firewall for LLM applications, built to catch prompt injection, jailbreaks, and adversarial instructions in a fintech/trading context. It fast-tracks safe prompts and only spends deeper (and slower) AI reasoning on the ones that actually need it.
 
-## How It Works
+## Architecture
 
-Aegis operates on a principle of "fast pass-through for safe prompts, deeper AI reasoning for suspicious ones." This is achieved through a sophisticated, multi-layered processing pipeline:
+Requests move through four layers, escalating only as far as needed:
 
-1.  **Layer 1: Fast Scanner**
-    *   Performs rapid, deterministic checks using regular expressions (`pyre2`, optionally `Hyperscan`) and heuristics to identify clear threats and allow safe prompts to bypass deeper analysis.
-    *   **Goal:** Immediate blocking or fast-tracking in `~10ms`.
+1. **Layer 0 — Preprocessor** (`agents/preprocessor.py`)
+   Decodes common obfuscation — Base64, ROT13, hex, Morse code, leetspeak, reversed text, spaced-out letters, Cyrillic/Greek homoglyphs — before anything else looks at the text, so hidden attacks can't hide behind an encoding.
 
-2.  **Layer 2: Intent Classifier (NeMo-based)**
-    *   Utilizes a NeMo-based classifier (leveraging Llama Guard 3 logic) to assess the risk of a prompt and generate a `risk_score` (0-1).
-    *   **Goal:** Provide a risk assessment within `~60ms`.
+2. **Layer 1 — Fast Scanner** (`config/actions.py`)
+   ~50 regex/heuristic patterns (prompt injection, fintech-specific abuse, PII, SQL/tool abuse, social engineering) plus fuzzy typo-matching for evasion attempts. Any match blocks immediately — no LLM call, no meaningful latency.
 
-3.  **Tiered Routing**
-    *   **Fast Track (`risk_score < 0.30`):** Prompts are allowed with minimal overhead.
-    *   **Light CAMEL Verification (`0.30 - 0.70`):** Medium-risk prompts are escalated to a lighter CAMEL-AI agent verification process.
-    *   **Full CAMEL Verification (`> 0.70`):** High-risk prompts undergo extensive analysis by multiple CAMEL-AI agents.
+3. **Layer 2 — Llama Guard Classification** (`core/classifiers.py`)
+   A single classifier call (Llama Guard 3, via NVIDIA NIM) scores the prompt 0.0–1.0. Routing: `< 0.30` → allow, `0.30–0.70` → full council, `0.70–0.99` → light council, `≥ 0.99` → immediate block.
 
-4.  **Layer 3: CAMEL Verification**
-    *   A sophisticated multi-agent system built with `CAMEL-AI` where specialized agents (`Intent Analyst`, `Policy Auditor`, `Tool-Risk Auditor`, `Adversarial Simulator`, `Final Judge`) collaboratively reason and reach a consensus on complex prompts.
+4. **Layer 3 — Security Council** (`agents/security_council.py`)
+   A multi-agent debate for ambiguous cases. **Light mode** runs `intent_analyst` → `policy_auditor` sequentially (a real debate turn). **Full mode** runs 5 agents in parallel — `intent_analyst`, `policy_auditor`, `adversarial_tester`, `context_analyzer`, `data_guardian` — with an early cutoff once 3 of 5 agree. The agents deliberately span two model families (Llama and Mixtral) rather than one, so a false consensus can't come from one model talking to itself five times.
 
-5.  **Layer 3.5: Output Validator**
-    *   Intercepts AI-generated outputs *before* they execute tool calls or return to users.
-    *   Performs tool call validation, response content scanning (e.g., for PII, credentials), and output schema enforcement to prevent dangerous AI responses.
+Beyond the core pipeline:
+- **Output validation** re-screens the LLM's response — a regex rescan or Llama Guard reclassification depending on the input's risk band, plus an unconditional check for exfiltration-shaped markdown links/images (the EchoLeak/CVE-2025-32711 pattern) regardless of how safe the input looked.
+- **Adversarial fatigue tracking** — a session with repeated elevated-risk attempts gets escalated to the council even if the current prompt alone looks low-risk, instead of judging every prompt in isolation.
+- **Session history** persists in Redis (`core/session_store.py`), shared across processes and surviving restarts; degrades gracefully to no-op if Redis is unavailable rather than failing the request.
 
-6.  **Layer 4: Explainability Engine**
-    *   For any non-allow decision (block or constrain), Aegis generates structured, human-readable explanations, detailing the attack type and reasoning behind the decision.
+## Project layout
 
-7.  **Layer 5: Adaptive Feedback Loop**
-    *   Continuously learns from new attack patterns and feedback. Uses embeddings and novelty detection to identify emerging threats and update its models and rules dynamically.
-
-8.  **Layer 6: Session Behavior Monitor**
-    *   Operates in parallel to track multi-turn attacks, gradual privilege escalation, and anomalous session patterns across an entire user session.
-
-### Key Features:
-*   **Tiered AI Reasoning:** Optimizes latency by applying deeper analysis only when necessary.
-*   **Adaptive Learning:** Automatically improves detection capabilities over time.
-*   **Explainable Decisions:** Clear, actionable reasons for every block or constraint.
-*   **Output Validation:** Guards against malicious AI-generated content and tool abuse.
-*   **Multi-Turn Attack Detection:** Monitors session context to identify evolving threats.
+```
+core/           gateway, session store, severity scoring, Llama Guard classifier
+agents/         preprocessor + the 5 council agents + orchestration
+config/         Layer 1 regex patterns and scan heuristics
+backend/        FastAPI REST + WebSocket API wrapping the gateway
+web/            React Live Tester frontend (talks to backend/)
+frontend/       Streamlit dashboard (separate, manually-run ops tool)
+scripts/        standalone verification/benchmark scripts (not the pytest suite)
+tests/          pytest suite
+data/           benchmark CSV fixtures (attack + false-positive datasets)
+docs/           design/reference notes (gitignored, local-only)
+```
 
 ## Prerequisites
 
-To set up and run Aegis, you will need:
+- Python 3.10+
+- Node 18+ (only if running the React frontend)
+- Redis (session persistence; the gateway degrades gracefully without it, just loses multi-turn context)
+- An NVIDIA NIM API key (Llama Guard classification + all council agents)
+- A Groq API key (only needed for `AegisGateway.chat()`'s answer generation; the WAF decision itself doesn't require it)
 
-*   **Python 3.8+** (recommended)
-*   **System Dependencies:**
-    *   `Redis`: Used for asynchronous queues, caching, and session state tracking.
-    *   `PostgreSQL`: For audit logs, feedback, and versioning of rules and models.
-    *   NVIDIA NeMo Guardrails: The core framework for intent classification and policy enforcement.
-*   **Python Libraries:**
-    The following Python packages can be installed using `pip` from `requirements.txt`:
-    *   `camel-ai`: Core framework for the multi-agent system.
-    *   `openai`: For integrating with OpenAI-compatible LLMs (e.g., Llama 3.3 via NVIDIA NIM, Groq, Together).
-    *   `nemoguardrails`: NVIDIA's framework for AI guardrails.
-    *   `python-dotenv`: For managing environment variables (e.g., API keys).
-    *   `pydantic`: For data validation and settings management.
-    *   `httpx`: A modern HTTP client.
-    *   `tenacity`: For retrying failed operations.
-    *   `pyre2`: Python wrapper for Google's RE2 regex engine (for Layer 1 Fast Scanner).
-    *   `python-hyperscan` (Optional): For accelerated large signature set matching in Layer 1.
-    *   `FastAPI` & `Uvicorn`: For building the core API gateway.
-    *   `Streamlit`: For the interactive frontend dashboard.
+## Setup
 
-## Installation
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-repo/aegis-waf.git
-    cd aegis-waf
-    ```
-2.  **Set up a Python virtual environment:**
-    ```bash
-    python -m venv venv
-    ./venv/Scripts/activate # On Windows
-    # source venv/bin/activate # On Linux/macOS
-    ```
-3.  **Install Python dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-4.  **Install System Dependencies:**
-    Ensure `Redis` and `PostgreSQL` are installed and running on your system, or accessible via Docker/cloud services. Configure their connection details in your environment variables.
-5.  **Environment Variables:**
-    Create a `.env` file in the root directory (refer to `.env.example` if available) and populate it with necessary API keys (e.g., NVIDIA, Google) and database connection strings.
-    ```
-    # .env example
-    NVIDIA_API_KEY=your_nvidia_api_key
-    GOOGLE_API_KEY=your_google_api_key
-    DATABASE_URL=postgresql://user:password@host:port/database
-    REDIS_URL=redis://localhost:6379/0
-    ```
-
-## Usage
-
-### Running the Core WAF Gateway
-
-The core WAF API gateway is built with FastAPI.
 ```bash
-uvicorn core.gateway:app --host 0.0.0.0 --port 8000
+git clone <this-repo>
+cd Aegis_WAF
+python -m venv venv
+./venv/Scripts/activate      # Windows
+# source venv/bin/activate   # Linux/macOS
+pip install -r requirements.txt
+cp .env.example .env         # then fill in real API keys
 ```
-This will start the WAF, making its `evaluate` and `feedback` APIs available (e.g., at `http://localhost:8000/v1/waf/evaluate`).
 
-### Running the Frontend Dashboard
+## Running it
 
-The interactive dashboard provides a visual interface for monitoring WAF decisions, metrics, and explanations.
+**Everything via Docker (backend + Redis + React, local/demo scope — no auth/TLS):**
 ```bash
+docker compose up
+```
+Backend on `:8000`, React app on `:8080`.
+
+**Or run pieces individually:**
+```bash
+# FastAPI backend (REST + WebSocket)
+uvicorn backend.main:app --reload
+
+# React Live Tester (in web/, proxies to the backend via Vite dev server)
+cd web && npm install && npm run dev
+
+# Streamlit ops dashboard (separate from the above, not containerized)
 streamlit run frontend/app.py
 ```
-This will open the dashboard in your web browser, typically at `http://localhost:8501`.
 
-### Running Tests
-
-To verify the WAF's functionality and performance:
+**Tests and benchmarks:**
 ```bash
-pytest tests/
+pytest tests/                      # unit/integration suite
+python scripts/test_dataset.py     # 80-case attack dataset benchmark
 ```
-This will execute the automated benchmarks and tests.
+Both benchmarks currently sit at 100% (80/80 attack cases, 18/18 false-positive cases). CI (`.github/workflows/test.yml`) runs the pytest suite and the attack benchmark against a real Redis service on every push/PR.
 
----
-
-**Note:** This `README.md` provides a high-level overview. For detailed configuration, agent customization, and advanced deployment strategies, please refer to the specific documentation within the `config/` and `agents/` directories.
+`scripts/` also has several other standalone verification scripts (`test_severity.py`, `test_failures.py`, `test_prompts.py`, etc.) used during development — run any of them directly with `python scripts/<name>.py` from the repo root.
