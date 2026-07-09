@@ -1,6 +1,7 @@
 """Durable per-session prompt history for context_analyzer's multi-turn
 reasoning. Replaces the old in-memory, process-local _SESSION_HISTORY dict
 so history survives restarts and is shared across worker processes."""
+import logging
 import os
 from typing import List, Optional
 
@@ -10,6 +11,8 @@ try:
     from redis.retry import Retry as _Retry
 except Exception:
     _redis = None
+
+logger = logging.getLogger(__name__)
 
 _MAX_HISTORY_PER_SESSION = 10
 _SESSION_TTL_SECONDS = 24 * 60 * 60
@@ -52,7 +55,7 @@ class SessionStore:
             # multi-turn analysis, or fatigue detection), but it's not a
             # security-critical failure - a Redis outage shouldn't take down
             # the whole WAF request path.
-            print(f"[SESSION_STORE] {what} failed, degrading to empty history: {e}")
+            logger.warning("%s failed, degrading to empty history: %s", what, e)
             return []
 
     def _push(self, key: str, value: str, what: str) -> None:
@@ -65,7 +68,7 @@ class SessionStore:
             pipe.expire(key, _SESSION_TTL_SECONDS)
             pipe.execute()
         except Exception as e:
-            print(f"[SESSION_STORE] {what} failed, this entry won't be in future history: {e}")
+            logger.warning("%s failed, this entry won't be in future history: %s", what, e)
 
     def get_history(self, session_id: str) -> List[str]:
         if not session_id:

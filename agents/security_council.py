@@ -3,12 +3,15 @@ Security Council - Variable-agent orchestration based on risk level.
 Supports light mode (2 agents) and full mode (5 agents).
 Returns unified AegisResponse format for consistency with production API.
 """
+import logging
 import os
 import time
 import concurrent.futures
 from typing import Callable, Optional, Literal
 
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 from .schemas import (
     AgentAnalysis, 
@@ -65,7 +68,7 @@ class SecurityCouncil:
         try:
             return fn()
         except Exception as e:
-            print(f"[COUNCIL] {agent_name} failed: {e}")
+            logger.warning("%s failed: %s", agent_name, e)
             return AgentAnalysis(
                 agent_name=agent_name,
                 assessment="UNCERTAIN",
@@ -88,7 +91,7 @@ class SecurityCouncil:
         decodings = decodings or []
 
         if decodings:
-            print(f"[PREPROCESSOR] Decoded: {', '.join(decodings)}")
+            logger.info("Preprocessor decoded: %s", ', '.join(decodings))
 
         if self.mode == "light":
             return self._evaluate_light(preprocessed, decodings)
@@ -187,7 +190,7 @@ class SecurityCouncil:
                 content=f"Applied decodings: {', '.join(decodings)}"
             )
 
-        print("[COUNCIL] Running full 5-agent mode (parallel)")
+        logger.info("Running full 5-agent mode (parallel)")
 
         # All 5 agents analyze the prompt independently (unlike light mode,
         # none of them depend on another agent's output here), so they run
@@ -229,7 +232,10 @@ class SecurityCouncil:
                 consensus_count = vote_record.get_consensus_count()
                 if consensus_count >= 3:
                     majority_vote = vote_record.get_majority()
-                    print(f"[COUNCIL] Early cutoff: {majority_vote} ({consensus_count}/{agents_checked}) after {agents_checked} agents")
+                    logger.info(
+                        "Early cutoff: %s (%d/%d) after %d agents",
+                        majority_vote, consensus_count, agents_checked, agents_checked,
+                    )
                     early_cutoff = True
                     break
         finally:
@@ -240,7 +246,10 @@ class SecurityCouncil:
         total_agents = len(vote_record.agent_analyses)
         
         if not early_cutoff:
-            print(f"[COUNCIL] Vote: {vote_record.vote_breakdown} | Majority: {majority_vote} ({consensus_count}/{total_agents})")
+            logger.info(
+                "Vote: %s | Majority: %s (%d/%d)",
+                vote_record.vote_breakdown, majority_vote, consensus_count, total_agents,
+            )
         
         consensus_reached = consensus_count >= 3
         

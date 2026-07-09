@@ -1,3 +1,4 @@
+import logging
 import sys
 import os
 import threading
@@ -25,6 +26,7 @@ from session_store import SessionStore
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
 
 from agents.preprocessor import preprocess_prompt
 
@@ -190,7 +192,7 @@ class AegisGateway:
         route = "FAST_TRACK" if risk_score < 0.30 else ("FULL_CAMEL" if risk_score <= 0.70 else "LIGHT_CAMEL")
         if risk_score >= 0.99:
             route = "IMMEDIATE_BLOCK"
-        print(f"[LLAMA_GUARD] Risk={risk_score:.3f} -> {route}")
+        logger.info("Llama Guard risk=%.3f -> %s", risk_score, route)
         
         # Layer 3: Risk-based Routing
         if risk_score >= 0.99:
@@ -350,7 +352,7 @@ class AegisGateway:
             output_blocked = True
             output_reason = f"Output blocked: {exfil_findings[0]}"
             llm_content = f"[CLOAKED] {output_reason}"
-            print(f"[OUTPUT_VAL] Blocked by exfil-channel check: {exfil_findings[0]}")
+            logger.warning("Output blocked by exfil-channel check: %s", exfil_findings[0])
         elif 0.3 <= input_risk <= 0.7:
             # Medium Risk: Regex Scan
             scan_out = fast_scan(llm_content)
@@ -358,7 +360,7 @@ class AegisGateway:
                 output_blocked = True
                 output_reason = f"Output blocked by Fast Scanner: {scan_out['reason']}"
                 llm_content = f"[CLOAKED] {output_reason}"
-                print(f"[OUTPUT_VAL] Blocked by Regex (Risk: {input_risk:.2f})")
+                logger.warning("Output blocked by regex (risk: %.2f)", input_risk)
                 
         elif input_risk > 0.7:
             # High Risk: Llama Guard
@@ -367,7 +369,7 @@ class AegisGateway:
                 output_blocked = True
                 output_reason = f"Output blocked by Llama Guard: {risk_out.category}"
                 llm_content = f"[CLOAKED] {output_reason}"
-                print(f"[OUTPUT_VAL] Blocked by Llama Guard (Risk: {input_risk:.2f})")
+                logger.warning("Output blocked by Llama Guard (risk: %.2f)", input_risk)
                 
         output_val_latency = int((time.time() - output_val_start) * 1000)
         
@@ -406,6 +408,7 @@ def aegis(prompt: str, session_id: str = "", context: str = "") -> dict:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     print("="*60)
     print("Aegis WAF Protected Chat (Groq + Llama 3.3 70B)")
     print("="*60)
